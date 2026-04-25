@@ -3,6 +3,7 @@ import { createImageTo3dTask } from '../../lib/meshy';
 import { uploadImageFromDataUri, uploadAudioBuffer } from '../../lib/uploadthing';
 import { updateSlot, presetForElement, elementFromRgb } from '../../lib/sessions';
 import { dominantInkRgbFromDataUri } from '../../lib/imageColor';
+import { applyDepthVignette } from '../../lib/imagePreprocess';
 import { generateMonsterCry } from '../../lib/eleven';
 
 export const prerender = false;
@@ -29,7 +30,17 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    const taskId = await createImageTo3dTask(imageDataUri);
+    // Pre-process: add a soft radial vignette inside the inked silhouette so
+    // Meshy's image-to-3D infers depth/volume from the fake shading instead of
+    // returning a flat extrusion of the outline.
+    let imageForMeshy = imageDataUri;
+    try {
+      imageForMeshy = await applyDepthVignette(imageDataUri, { vignetteStrength: 0.55 });
+    } catch (e) {
+      console.warn('[generate] vignette preprocess failed, using raw drawing:', e);
+    }
+
+    const taskId = await createImageTo3dTask(imageForMeshy);
 
     // If this submission is part of a Tigerverse session, record the taskId on
     // the right player slot so /api/session/[code] surfaces progress to the
