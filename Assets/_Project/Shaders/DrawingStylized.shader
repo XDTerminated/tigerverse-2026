@@ -98,6 +98,7 @@ Shader "Tigerverse/DrawingStylized"
         {
             Name "ForwardLit"
             Tags { "LightMode"="UniversalForward" }
+            Cull Off
 
             HLSLPROGRAM
             #pragma vertex vert
@@ -198,9 +199,15 @@ Shader "Tigerverse/DrawingStylized"
                 return OUT;
             }
 
-            half4 frag(Varyings IN) : SV_Target
+            half4 frag(Varyings IN, FRONT_FACE_TYPE isFront : FRONT_FACE_SEMANTIC) : SV_Target
             {
                 float3 nWS    = normalize(IN.normalWS);
+                // GLBs from Meshy can come in with flipped winding or inverted
+                // vertex normals — without this, lighting gives ndl=0 every-
+                // where and the pencil hatch maxes out, painting the model
+                // solid black. Flip the normal for back-facing fragments so
+                // both sides shade correctly.
+                if (IS_FRONT_VFACE(isFront, 1, 0) == 0) nWS = -nWS;
                 float3 viewWS = SafeNormalize(GetCameraPositionWS() - IN.positionWS);
 
                 // 1) White paper base (slight cream).
@@ -220,7 +227,8 @@ Shader "Tigerverse/DrawingStylized"
                 // 4) Cross-hatch pencil where shadow + rim build up — heavier than before
                 //    so the white body still has visible hand-drawn shading.
                 Light mainLight = GetMainLight();
-                float ndl = saturate(dot(nPaper, mainLight.direction));
+                float ndlRaw = dot(nPaper, mainLight.direction);   // -1..1 signed
+                float ndl    = saturate(ndlRaw);
                 float fresnel = pow(1.0 - saturate(dot(nPaper, viewWS)), 3.0);
                 float darkness = saturate((1.0 - ndl) * 0.7 + fresnel * 0.85);
                 darkness = pow(darkness, 1.0 / max(_PencilContrast, 0.01));
@@ -248,7 +256,16 @@ Shader "Tigerverse/DrawingStylized"
                 surf.alpha      = 1;
                 surf.occlusion  = 1;
 
-                return UniversalFragmentPBR(inputData, surf);
+                half4 lit = UniversalFragmentPBR(inputData, surf);
+
+                // Wrap-around fill: PBR shadows half the sphere by default
+                // (everywhere ndl <= 0). Pull the SIDES of the sphere — the
+                // band between the terminator and ~120° back — up toward
+                // the unshaded albedo, so visible shadow only covers the
+                // back quarter. The very back stays dark via PBR.
+                float wrapLift = saturate(ndlRaw + 0.7) - ndl;  // >0 only on the sides
+                lit.rgb = lerp(lit.rgb, albedo, saturate(wrapLift * 1.5));
+                return lit;
             }
             ENDHLSL
         }

@@ -215,6 +215,15 @@ namespace Tigerverse.Core
         {
             SetState(AppState.Hatch);
 
+            // Balance the two players' core stats (HP, attack, speed) so
+            // neither has a numerical advantage from random color → stat
+            // assignment. Element / moves / personality stay per-player.
+            if (data?.p1?.stats != null && data?.p2?.stats != null)
+            {
+                Tigerverse.Combat.StatsBalancer.Equalize(data.p1.stats, data.p2.stats);
+                Debug.Log($"[GameStateManager] Stats balanced: hp={data.p1.stats.hp} atk={data.p1.stats.attackMult:F2} speed={data.p1.stats.speed:F2}");
+            }
+
             if (modelFetcher == null)
             {
                 Debug.LogWarning("[GameStateManager] ModelFetcher missing — cannot spawn monsters.");
@@ -312,6 +321,11 @@ namespace Tigerverse.Core
             statsA = data?.p1?.stats != null ? MonsterStatsSO.FromData(data.p1.stats, catalog) : null;
             statsB = data?.p2?.stats != null ? MonsterStatsSO.FromData(data.p2.stats, catalog) : null;
 
+            // ─── Inspection phase ───────────────────────────────────────
+            // Player can walk around their scribble, hover for stats, and
+            // confirm via READY button / voice / fist-bump before battle.
+            yield return RunInspectionPhase(spawnA, spawnB);
+
             // Pre-battle reveals (sequential).
             SetState(AppState.PreBattleReveal);
             if (revealCards != null && revealCards.Length > 0 && revealCards[0] != null)
@@ -366,6 +380,46 @@ namespace Tigerverse.Core
             {
                 Debug.LogWarning("[GameStateManager] BattleManager missing — battle will not start.");
             }
+        }
+
+        // Show the local player a "READY!" prompt next to their monster.
+        // Resolves once the player confirms (button press, voice, or fist
+        // bump). Multiplayer note: each client runs this independently for
+        // its own player; both clients will progress past this before the
+        // pre-battle reveals fire.
+        private IEnumerator RunInspectionPhase(Vector3 spawnA, Vector3 spawnB)
+        {
+            // Decide which spawn point belongs to the LOCAL player.
+            Vector3 localSpawn = localCasterIndex == 0 ? spawnA : spawnB;
+
+            var hsGo = new GameObject("ReadyHandshake");
+            hsGo.transform.position = Vector3.zero;
+            var handshake = hsGo.AddComponent<Combat.ReadyHandshake>();
+
+            // Position the button just to the right of the local player's
+            // monster, at chest height.
+            Vector3 btnPos = localSpawn + new Vector3(0.55f, 1.10f, 0f);
+            Quaternion btnRot = Quaternion.identity;
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                Vector3 toCam = cam.transform.position - btnPos;
+                toCam.y = 0f;
+                if (toCam.sqrMagnitude > 1e-4f)
+                    btnRot = Quaternion.LookRotation(-toCam.normalized, Vector3.up);
+            }
+            handshake.Configure(btnPos, btnRot);
+
+            bool ready = false;
+            handshake.OnLocalReady += () => ready = true;
+
+            Debug.Log("[GameStateManager] Inspection phase active — waiting for local player to ready up.");
+            // Hard cap so we never deadlock if voice + button + bump all fail.
+            float deadline = Time.time + 90f;
+            while (!ready && Time.time < deadline) yield return null;
+            if (!ready) Debug.LogWarning("[GameStateManager] Inspection phase timed out — auto-advancing to battle.");
+
+            if (hsGo != null) Destroy(hsGo);
         }
 
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)

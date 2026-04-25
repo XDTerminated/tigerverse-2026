@@ -34,7 +34,8 @@ namespace Tigerverse.Net
 
             // Tint by player number so players can tell each other apart.
             int pid = Object.InputAuthority.PlayerId;
-            Color tint = pid == 0 ? new Color(0.2f, 0.7f, 1f) : new Color(1f, 0.4f, 0.6f);
+            Color tint = pid == 0 ? new Color(0.30f, 0.55f, 1.00f) : new Color(1.00f, 0.45f, 0.55f);
+            Color accent = pid == 0 ? new Color(0.10f, 0.20f, 0.55f) : new Color(0.55f, 0.10f, 0.20f);
             if (colorTargets != null)
             {
                 foreach (var r in colorTargets)
@@ -71,6 +72,40 @@ namespace Tigerverse.Net
             else
             {
                 Debug.Log($"[PlayerAvatar] Spawned remote (PlayerId={pid}). Showing visuals.");
+
+                // Build a paper-craft humanoid body for the remote avatar so
+                // it reads as a person, not three floating cubes. Anchored
+                // to the existing head/hand transforms which Render() drives
+                // from the networked positions.
+                var bodyGo = new GameObject("PaperHumanoidBody");
+                bodyGo.transform.SetParent(transform, worldPositionStays: false);
+                var humanoid = bodyGo.AddComponent<PaperHumanoid>();
+                humanoid.headSrc      = headVisual;
+                humanoid.leftHandSrc  = leftHandVisual;
+                humanoid.rightHandSrc = rightHandVisual;
+                humanoid.SetBodyColor(tint, accent);
+
+                // Replace the head cube with a sphere so it looks like a head.
+                if (headVisual != null)
+                {
+                    var headRend = headVisual.GetComponent<MeshRenderer>();
+                    var headMf   = headVisual.GetComponent<MeshFilter>();
+                    if (headMf != null)
+                    {
+                        // Steal the unity primitive sphere mesh.
+                        var primSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                        var sphereMesh = primSphere.GetComponent<MeshFilter>().sharedMesh;
+                        DestroyImmediate(primSphere);
+                        headMf.sharedMesh = sphereMesh;
+                        headVisual.localScale = Vector3.one * 0.22f;
+                    }
+                    if (headRend != null && headRend.sharedMaterial != null)
+                    {
+                        var headMat = headRend.material; // instance for this avatar
+                        if (headMat.HasProperty("_BaseColor")) headMat.SetColor("_BaseColor", tint);
+                        else headMat.color = tint;
+                    }
+                }
             }
         }
 

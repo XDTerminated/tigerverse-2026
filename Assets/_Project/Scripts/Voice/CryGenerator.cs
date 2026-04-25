@@ -1,18 +1,21 @@
+using System;
 using System.Collections;
+using Newtonsoft.Json;
+using Tigerverse.Net;
 using UnityEngine;
 using UnityEngine.Networking;
-using Tigerverse.Net;
 
 namespace Tigerverse.Voice
 {
     /// <summary>
-    /// Client-side monster cry generation via ElevenLabs Sound Effects.
-    /// Pass a name + element, hand back an AudioClip the caller can assign
-    /// to a MonsterCry component.
+    /// Pokemon-style monster cry generator. Takes the monster's name, picks
+    /// the first word, and dramatically yells it twice via ElevenLabs TTS.
+    /// MonsterCry's <c>basePitch</c> then squashes the result into a
+    /// creature-y register on playback.
     /// </summary>
     public static class CryGenerator
     {
-        public static IEnumerator Generate(string name, string element, System.Action<AudioClip> onClip)
+        public static IEnumerator Generate(string name, string element, Action<AudioClip> onClip)
         {
             var cfg = BackendConfig.Load();
             if (cfg == null || string.IsNullOrEmpty(cfg.elevenLabsApiKey))
@@ -22,22 +25,39 @@ namespace Tigerverse.Voice
                 yield break;
             }
 
-            string prompt =
-                $"A short non-human cartoon creature roar in the style of a Pokemon cry, " +
-                $"vaguely yelling its own name \"{name}\" with a {element} elemental texture. " +
-                $"Mouthy, energetic, around 2 seconds, no music, no lyrics.";
-
-            string body = JsonUtility.ToJson(new SoundGenBody
+            // Strip to a single word — keeps the cry punchy and avoids the
+            // monster reciting a full sentence. Also fall back to a generic
+            // creature-y syllable if the name is empty/garbage.
+            string firstWord = "Bweh";
+            if (!string.IsNullOrWhiteSpace(name))
             {
-                text = prompt,
-                duration_seconds = 2.0f,
-                prompt_influence = 0.6f
-            });
+                var parts = name.Trim().Split(new[] { ' ', '\t', ',', '.', '!', '?' },
+                    StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0 && parts[0].Length > 0) firstWord = parts[0];
+                // Cap length so insanely long names don't take 4 seconds to say.
+                if (firstWord.Length > 12) firstWord = firstWord.Substring(0, 12);
+            }
 
-            const string url = "https://api.elevenlabs.io/v1/sound-generation";
-            using (var req = new UnityWebRequest(url, "POST"))
+            // Pick one of three Pokemon-ish patterns at random for variety.
+            string text;
+            int variant = UnityEngine.Random.Range(0, 3);
+            switch (variant)
             {
-                req.uploadHandler = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body));
+                case 0:  text = $"{firstWord}! {firstWord}!"; break;
+                case 1:  text = $"{firstWord}, {firstWord}-{firstWord}!"; break;
+                default: text = $"{firstWord}! {firstWord}, {firstWord}!"; break;
+            }
+
+            string voiceId = !string.IsNullOrEmpty(cfg.elevenLabsTtsVoiceId)
+                ? cfg.elevenLabsTtsVoiceId
+                : "21m00Tcm4TlvDq8ikWAM"; // Rachel default
+
+            string url = $"https://api.elevenlabs.io/v1/text-to-speech/{voiceId}";
+            string body = JsonConvert.SerializeObject(new { text = text, model_id = "eleven_turbo_v2_5" });
+
+            using (var req = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
+            {
+                req.uploadHandler   = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body));
                 req.downloadHandler = new DownloadHandlerAudioClip(url, AudioType.MPEG);
                 req.SetRequestHeader("xi-api-key", cfg.elevenLabsApiKey);
                 req.SetRequestHeader("Content-Type", "application/json");
@@ -53,22 +73,22 @@ namespace Tigerverse.Voice
 #endif
                 if (err || req.responseCode >= 400)
                 {
-                    Debug.LogWarning($"[CryGenerator] sound-gen failed HTTP {req.responseCode}: {req.error}");
+                    Debug.LogWarning($"[CryGenerator] TTS failed HTTP {req.responseCode} '{req.error}' (text='{text}')");
                     onClip?.Invoke(null);
                     yield break;
                 }
 
-                var clip = DownloadHandlerAudioClip.GetContent(req);
+                AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
+                if (clip == null || clip.length < 0.05f || clip.samples == 0)
+                {
+                    Debug.LogWarning($"[CryGenerator] TTS returned invalid clip (voice not in library?). text='{text}'");
+                    onClip?.Invoke(null);
+                    yield break;
+                }
+
+                Debug.Log($"[CryGenerator] '{name}' cry='{text}' length={clip.length:F2}s");
                 onClip?.Invoke(clip);
             }
-        }
-
-        [System.Serializable]
-        private class SoundGenBody
-        {
-            public string text;
-            public float duration_seconds;
-            public float prompt_influence;
         }
     }
 }

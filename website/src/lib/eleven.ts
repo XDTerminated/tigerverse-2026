@@ -1,58 +1,59 @@
 import { ELEVENLABS_API_KEY } from 'astro:env/server';
 
-async function callElevenLabs(prompt: string): Promise<Buffer> {
+const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel — works on every account
+const DEFAULT_MODEL_ID = 'eleven_turbo_v2_5';
+
+async function callTts(text: string, voiceId = DEFAULT_VOICE_ID): Promise<Buffer> {
   if (!ELEVENLABS_API_KEY) throw new Error('ELEVENLABS_API_KEY not configured');
 
-  const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
       'xi-api-key': ELEVENLABS_API_KEY,
       'Content-Type': 'application/json',
       Accept: 'audio/mpeg',
     },
-    body: JSON.stringify({
-      text: prompt,
-      duration_seconds: 2.0,
-      prompt_influence: 0.6,
-    }),
+    body: JSON.stringify({ text, model_id: DEFAULT_MODEL_ID }),
   });
 
   if (!res.ok) {
-    throw new Error(`ElevenLabs sound-gen failed: ${res.status} ${await res.text()}`);
+    throw new Error(`ElevenLabs TTS failed: ${res.status} ${await res.text()}`);
   }
 
   const arr = await res.arrayBuffer();
   return Buffer.from(arr);
 }
 
-/**
- * Generate a Pokemon-style monster cry via ElevenLabs Sound Effects.
- * Used as the auto-generated baseline cry derived from the doodle's color.
- * Returns the raw audio buffer (mp3) so the caller can upload it.
- */
-export async function generateMonsterCry(name: string, element: string): Promise<Buffer> {
-  const prompt =
-    `A short non-human cartoon creature roar in the style of a Pokemon cry, ` +
-    `vaguely yelling its own name "${name}" with a ${element} elemental texture. ` +
-    `Mouthy, energetic, ~2 seconds, no music, no lyrics.`;
-  return callElevenLabs(prompt);
+/** Build a Pokemon-style "say your name" cry text from the monster name. */
+function buildCryText(name: string): string {
+  const trimmed = (name ?? '').trim();
+  let firstWord = trimmed.split(/[\s,.!?]+/).filter(Boolean)[0] ?? 'Bweh';
+  if (firstWord.length > 12) firstWord = firstWord.slice(0, 12);
+  // Pick one of three patterns at random so successive monsters don't sound identical.
+  const variants = [
+    `${firstWord}! ${firstWord}!`,
+    `${firstWord}, ${firstWord}-${firstWord}!`,
+    `${firstWord}! ${firstWord}, ${firstWord}!`,
+  ];
+  return variants[Math.floor(Math.random() * variants.length)];
 }
 
 /**
- * Generate a Pokemon-style monster cry whose tone is shaped by player-supplied
- * personality characteristics (e.g. "ferocious, deep growl, scary"). Used by
- * /api/voice when the user explicitly customizes the creature in the
- * generating UI.
+ * Generate a Pokemon-style monster cry: the creature dramatically yells
+ * its own name twice via ElevenLabs TTS. Returns raw mp3 bytes for upload.
+ */
+export async function generateMonsterCry(name: string, _element: string): Promise<Buffer> {
+  return callTts(buildCryText(name));
+}
+
+/**
+ * Same name-yelling cry, but kept as a separate function so the /api/voice
+ * route can pass through unchanged while a future enhancement could shape
+ * the voice based on personality characteristics (e.g. switch voice ID).
  */
 export async function generateMonsterCryFromCharacteristics(
   name: string,
-  characteristics: string,
+  _characteristics: string,
 ): Promise<Buffer> {
-  const sanitized = characteristics.trim().replace(/\s+/g, ' ').slice(0, 400);
-  const prompt =
-    `A short non-human cartoon creature roar in the style of a Pokemon cry, ` +
-    `vaguely yelling its own name "${name}". ` +
-    `The creature is described as: ${sanitized}. ` +
-    `Mouthy, energetic, ~2 seconds, no music, no lyrics.`;
-  return callElevenLabs(prompt);
+  return callTts(buildCryText(name));
 }

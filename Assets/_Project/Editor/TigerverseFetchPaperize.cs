@@ -33,6 +33,18 @@ namespace Tigerverse.EditorTools
             win.Show();
         }
 
+        [MenuItem("Tigerverse/Test -> Fetch Sample GLB (hardcoded test URL)")]
+        public static void FetchSample()
+        {
+            const string sampleUrl = "https://ueggfh303j.ufs.sh/f/hqoaI3f7pqQl6koHkKXdhzSPI8ykOc45FrwKeWNpJfbAYMB6";
+            var win = GetWindow<TigerverseFetchPaperize>(false, "GLB Paper Test", true);
+            win.minSize = new Vector2(560, 280);
+            win.url = sampleUrl;
+            EditorPrefs.SetString(PrefsKey_Url, sampleUrl);
+            win.Show();
+            EditorCoroutineRunner.Run(win.FetchAndApply(sampleUrl, null, win));
+        }
+
         private void OnEnable()
         {
             url         = EditorPrefs.GetString(PrefsKey_Url, "");
@@ -194,7 +206,9 @@ namespace Tigerverse.EditorTools
                     drawingTex = DownloadHandlerTexture.GetContent(imgReq);
             }
 
-            DrawingColorize.Apply(container, drawingTex, drawingStrength: 0.55f);
+            // Pass 0 → stylized paper shader. Anything >0.5 routes to the
+            // legacy triplanar wrap (busy, not what we want).
+            DrawingColorize.Apply(container, drawingTex, drawingStrength: 0f);
 
             Selection.activeObject = container;
             owner.SetStatus($"Done. Spawned '{container.name}' at {spawnPos}. Tweak its material in the Inspector.");

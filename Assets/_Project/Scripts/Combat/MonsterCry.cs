@@ -9,6 +9,9 @@ namespace Tigerverse.Combat
         [SerializeField] private AudioClip clip;
         [SerializeField] private GameObject taunSpeechBubblePrefab; // optional
 
+        [Tooltip("Base pitch applied on every cry playback. <1 = lower / more monster-y, >1 = higher / cuter creature.")]
+        [SerializeField] private float basePitch = 0.78f;
+
         private bool _warnedNullClip;
 
         private void Awake()
@@ -20,15 +23,15 @@ namespace Tigerverse.Combat
                     audioSource = gameObject.AddComponent<AudioSource>();
             }
 
-            // Cries are gameplay-essential — keep them mostly 2D so they're always audible
-            // through whatever speakers are wired up (laptop, headset, MPPM shared output).
-            // A small spatial bias just hints at left/right pan based on monster position.
-            audioSource.spatialBlend = 0.25f;
-            audioSource.rolloffMode = AudioRolloffMode.Linear;
-            audioSource.minDistance = 1f;
-            audioSource.maxDistance = 30f;
+            // Cries are gameplay-essential — fully 2D so they're always
+            // audible at full volume regardless of where the monster is or
+            // where the listener is.
+            audioSource.spatialBlend = 0f;
             audioSource.volume = 1f;
             audioSource.playOnAwake = false;
+            audioSource.bypassEffects = true;
+            audioSource.bypassListenerEffects = true;
+            audioSource.bypassReverbZones = true;
 
             // If no AudioReverbZone in scene, apply slight reverb via mix.
             var reverb = FindObjectOfType<AudioReverbZone>();
@@ -58,8 +61,9 @@ namespace Tigerverse.Combat
         private void PlayAt(float pitch)
         {
             if (!EnsureClip()) return;
-            audioSource.pitch = pitch;
+            audioSource.pitch = pitch * basePitch;
             audioSource.PlayOneShot(clip);
+            Debug.Log($"[MonsterCry] '{name}' PLAYED clip={clip.name} length={clip.length:F2}s pitch={audioSource.pitch:F2} volume={audioSource.volume} on={audioSource.gameObject.name}");
         }
 
         public void PlaySpawn()        { PlayAt(1.0f); }

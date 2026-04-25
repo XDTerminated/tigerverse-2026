@@ -14,6 +14,12 @@ namespace Tigerverse.Net
         [Tooltip("Optional voice ID for announcer TTS")]
         public string elevenLabsTtsVoiceId = "";
 
+        [Tooltip("Groq Cloud API key (for LLM-driven Professor Q&A in tutorial)")]
+        public string groqApiKey = "";
+
+        [Tooltip("Groq model id, e.g. llama-3.3-70b-versatile or llama-3.1-8b-instant")]
+        public string groqModel = "llama-3.3-70b-versatile";
+
         public float pollIntervalSec = 3f;
 
         [Tooltip("Photon Fusion 2 App ID")]

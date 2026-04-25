@@ -14,6 +14,7 @@ namespace Tigerverse.Voice
     public class VoiceCommandRouter : MonoBehaviour
     {
         private const string ScribeUrl = "https://api.elevenlabs.io/v1/speech-to-text";
+        private const string GroqWhisperUrl = "https://api.groq.com/openai/v1/audio/transcriptions";
 
         [SerializeField] private BackendConfig config;
         [SerializeField] private BattleManager battle; // assigned by GameStateManager
@@ -21,6 +22,9 @@ namespace Tigerverse.Voice
         [SerializeField] private int   sampleRate     = 16000;
         [SerializeField] private int   maxRecordSec   = 6;
         [SerializeField] private float matchThreshold = 0.35f;
+
+        [Tooltip("Substring to prefer when picking the mic. e.g. 'Quest' for the headset, 'Realtek' or empty for the laptop. If empty, the first device is used.")]
+        [SerializeField] private string preferredMicSubstring = "";
 
         private MoveSO[]   availableMoves;
         private bool       isRecording;
@@ -49,14 +53,65 @@ namespace Tigerverse.Voice
         {
             if (config == null) config = BackendConfig.Load();
 
-            if (Microphone.devices != null && Microphone.devices.Length > 0)
-            {
-                micDeviceName = Microphone.devices[0];
-            }
-            else
+            PickMicDevice();
+        }
+
+        /// <summary>
+        /// Pick a mic device. If <see cref="preferredMicSubstring"/> is set,
+        /// the first device whose name contains that substring is chosen
+        /// (case-insensitive). Otherwise the system default (devices[0]) is
+        /// used. Useful for switching between laptop mic in editor and the
+        /// VR headset mic on Quest.
+        /// </summary>
+        public void PickMicDevice()
+        {
+            var devices = Microphone.devices;
+            if (devices == null || devices.Length == 0)
             {
                 Debug.LogWarning("[VoiceCommandRouter] No microphone devices found.", this);
+                micDeviceName = null;
+                return;
             }
+
+            if (!string.IsNullOrEmpty(preferredMicSubstring))
+            {
+                foreach (var d in devices)
+                {
+                    if (d != null && d.IndexOf(preferredMicSubstring, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        micDeviceName = d;
+                        Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (matched preferred substring '{preferredMicSubstring}'). Available: [{string.Join(", ", devices)}]");
+                        return;
+                    }
+                }
+                Debug.LogWarning($"[VoiceCommandRouter] preferredMicSubstring='{preferredMicSubstring}' didn't match any device. Trying auto-pick. Available: [{string.Join(", ", devices)}]");
+            }
+
+            // Auto-pick: if a Quest/Oculus headset mic is present, prefer it
+            // over any other device (the laptop mic is usually too far / too
+            // quiet when the player is wearing the headset).
+            string[] preferredAuto = { "Oculus", "Quest", "Headset" };
+            foreach (var pref in preferredAuto)
+            {
+                foreach (var d in devices)
+                {
+                    if (d != null && d.IndexOf(pref, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        micDeviceName = d;
+                        Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (auto-picked via '{pref}'). Available: [{string.Join(", ", devices)}]");
+                        return;
+                    }
+                }
+            }
+
+            micDeviceName = devices[0];
+            Debug.Log($"[VoiceCommandRouter] Mic = '{micDeviceName}' (first device fallback). Available: [{string.Join(", ", devices)}]");
+        }
+
+        public void SetPreferredMicSubstring(string substring)
+        {
+            preferredMicSubstring = substring ?? "";
+            PickMicDevice();
         }
 
         public void Bind(BattleManager battle, int casterIndex, MoveSO[] availableMoves)
@@ -69,21 +124,90 @@ namespace Tigerverse.Voice
         // Tap-to-record mode: press once → records for `tapRecordSec` seconds → auto-processes.
         // Trigger is the UI click button, so voice activates on RIGHT GRIP (and Spacebar in editor).
         [SerializeField] private float tapRecordSec = 4f;
+
+        [Header("Open-mic mode (Voice-Activity-Detection)")]
+        [Tooltip("If true, the router uses VAD: continuously listens, fires the transcription the instant the player stops speaking — no chunk timer.")]
+        [SerializeField] private bool openMicMode = false;
+        [Tooltip("RMS amplitude required to BEGIN counting as 'speaking' (0..1). Should be ABOVE typical room noise.")]
+        [SerializeField] private float vadStartThreshold = 0.006f;
+        [Tooltip("Once speech has started, RMS must drop below THIS to count as silence (hysteresis). Should be lower than vadStartThreshold.")]
+        [SerializeField] private float vadContinueThreshold = 0.003f;
+        [Tooltip("How long the player must stay quiet after speaking before the utterance is sent for transcription.")]
+        [SerializeField] private float vadEndSilenceSec = 0.18f;
+        [Tooltip("Window of recent audio (ms) analysed for RMS each tick.")]
+        [SerializeField] private int   vadWindowMs = 60;
+        [Tooltip("Minimum utterance length before sending (s). Prevents random clicks from being transcribed.")]
+        [SerializeField] private float vadMinUtteranceSec = 0.12f;
+
+        // Push-to-talk silence threshold (legacy; only used by the chunked path if VAD is off but openMicMode is true. Keep for compatibility.)
+        [Tooltip("Peak amplitude below which a recorded clip is treated as silence and skipped.")]
+        [SerializeField] private float openMicSilenceThreshold = 0.02f;
+
         private float _autoStopAt;
+        private float _nextAutoTapAt;
+
+        // VAD state for open-mic mode.
+        private bool   _vadStarted;
+        private bool   _vadInSpeech;
+        private int    _vadSpeechStartPos;
+        private int    _vadLastSpeechPos;
+        private float  _vadLastTickAt;
+        private float[] _vadAnalysisBuf;
+
+        public void SetOpenMicMode(bool on)
+        {
+            openMicMode = on;
+            Debug.Log($"[VoiceCommandRouter] openMicMode = {on}");
+        }
+
+        // Mute gate — used by the Professor tutorial (and combat announcer)
+        // to prevent the mic from picking up its own TTS output through the
+        // laptop speakers, which would otherwise loop back as fake questions.
+        private bool _muted;
+
+        public void SetMuted(bool muted)
+        {
+            if (_muted == muted) return;
+            _muted = muted;
+            if (_muted)
+            {
+                // Discard whatever's currently being recorded so the echo
+                // from the speaker doesn't get sent to STT.
+                if (_vadStarted) StopVad();
+                if (isRecording)
+                {
+                    try { Microphone.End(micDeviceName); } catch { }
+                    isRecording = false;
+                    currentClip = null;
+                }
+            }
+            Debug.Log($"[VoiceCommandRouter] muted = {muted}");
+        }
 
         private void Update()
         {
-            // Auto-stop when the recording window expires.
+            // ─── Open-mic / VAD path ─────────────────────────────────────
+            if (openMicMode && !_muted)
+            {
+                VadTick();
+                return;
+            }
+            else if (_vadStarted)
+            {
+                // Mode just flipped off — stop the continuous recording.
+                StopVad();
+            }
+
+            // ─── Push-to-talk path ──────────────────────────────────────
             if (isRecording && Time.unscaledTime >= _autoStopAt)
             {
                 EndRecord();
                 return;
             }
-            if (isRecording) return; // ignore new presses while a record is in flight
+            if (isRecording) return;
 
             bool tap = false;
 
-            // Right grip (Quest Touch): pressed-this-frame edge.
             InputDevice rh = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             if (rh.isValid && rh.TryGetFeatureValue(CommonUsages.gripButton, out bool gripPressed))
             {
@@ -91,7 +215,6 @@ namespace Tigerverse.Voice
                 triggerWasPressed = gripPressed;
             }
 
-            // Editor / desktop fallback: spacebar (uses Input System) press-edge.
             bool spaceNow = UnityEngine.InputSystem.Keyboard.current != null
                 && UnityEngine.InputSystem.Keyboard.current.spaceKey.isPressed;
             if (spaceNow && !spaceWasPressed) tap = true;
@@ -101,6 +224,106 @@ namespace Tigerverse.Voice
             {
                 BeginRecord();
                 _autoStopAt = Time.unscaledTime + tapRecordSec;
+            }
+        }
+
+        // ─── VAD continuous open-mic ────────────────────────────────────
+        private void StartVad()
+        {
+            if (string.IsNullOrEmpty(micDeviceName)) return;
+            // Loop=true → 10 s circular buffer that never stops on its own.
+            currentClip = Microphone.Start(micDeviceName, true, 10, sampleRate);
+            isRecording = true;
+            _vadStarted = true;
+            _vadInSpeech = false;
+            int windowSamples = Mathf.Max(64, sampleRate * vadWindowMs / 1000);
+            if (_vadAnalysisBuf == null || _vadAnalysisBuf.Length != windowSamples)
+                _vadAnalysisBuf = new float[windowSamples];
+            Debug.Log($"[VoiceCommandRouter] VAD STARTED on '{micDeviceName}' (sampleRate={sampleRate}, window={windowSamples} samples).");
+        }
+
+        private void StopVad()
+        {
+            if (_vadStarted)
+            {
+                try { Microphone.End(micDeviceName); } catch { }
+                _vadStarted = false;
+                isRecording = false;
+                _vadInSpeech = false;
+                Debug.Log("[VoiceCommandRouter] VAD STOPPED.");
+            }
+        }
+
+        private void VadTick()
+        {
+            if (!_vadStarted) StartVad();
+            if (!_vadStarted || currentClip == null) return;
+
+            // Throttle to ~50 Hz so we don't burn CPU sampling every frame.
+            if (Time.unscaledTime - _vadLastTickAt < 0.020f) return;
+            _vadLastTickAt = Time.unscaledTime;
+
+            int total   = currentClip.samples;
+            int currentPos = Microphone.GetPosition(micDeviceName);
+            if (currentPos < 0) return;
+            int win = _vadAnalysisBuf.Length;
+            int startSample = (currentPos - win + total) % total;
+            currentClip.GetData(_vadAnalysisBuf, startSample);
+
+            // RMS over the last window.
+            float sumSq = 0f;
+            for (int i = 0; i < win; i++) sumSq += _vadAnalysisBuf[i] * _vadAnalysisBuf[i];
+            float rms = Mathf.Sqrt(sumSq / win);
+
+            // Hysteresis: use higher threshold to BEGIN, lower to STAY.
+            // This prevents word-mid-syllable RMS dips from prematurely
+            // ending the utterance.
+            float threshold = _vadInSpeech ? vadContinueThreshold : vadStartThreshold;
+            bool active = rms > threshold;
+
+            if (active)
+            {
+                if (!_vadInSpeech)
+                {
+                    _vadInSpeech = true;
+                    _vadSpeechStartPos = startSample;
+                    Debug.Log($"[VAD] Speech START rms={rms:F4} (threshold={vadStartThreshold:F4})");
+                }
+                _vadLastSpeechPos = currentPos;
+            }
+            else if (_vadInSpeech)
+            {
+                int silenceSamples = (currentPos - _vadLastSpeechPos + total) % total;
+                float silenceSec = silenceSamples / (float)sampleRate;
+                if (silenceSec >= vadEndSilenceSec)
+                {
+                    int speechLen = (_vadLastSpeechPos - _vadSpeechStartPos + total) % total;
+                    float utteranceSec = speechLen / (float)sampleRate;
+                    if (utteranceSec >= vadMinUtteranceSec)
+                    {
+                        // Add a small head + tail pad (50 ms each side) so we
+                        // don't clip onset/offset of short words like "ready".
+                        int padSamples = sampleRate / 20; // 50 ms
+                        int padStart   = (_vadSpeechStartPos - padSamples + total) % total;
+                        int padLen     = Mathf.Min(speechLen + padSamples * 2, total - 1);
+
+                        float[] data = new float[padLen];
+                        currentClip.GetData(data, padStart);
+
+                        var seg = AudioClip.Create("vadSeg", padLen, 1, sampleRate, false);
+                        seg.SetData(data, 0);
+                        byte[] wav = WavEncoder.EncodeWav(seg, padLen);
+                        Destroy(seg);
+
+                        Debug.Log($"[VAD] Speech END utterance={utteranceSec:F2}s rms={rms:F4} — sending to STT.");
+                        StartCoroutine(SendToScribe(wav));
+                    }
+                    else
+                    {
+                        Debug.Log($"[VAD] Speech END utterance={utteranceSec:F2}s — too short, ignored.");
+                    }
+                    _vadInSpeech = false;
+                }
             }
         }
 
@@ -134,6 +357,26 @@ namespace Tigerverse.Voice
                 return;
             }
 
+            // Open-mic silence skip: peak-amplitude check on the recorded
+            // samples. Quiet chunks (no speech) are dropped to avoid burning
+            // Scribe credits and spamming OnTranscript with empty strings.
+            if (openMicMode)
+            {
+                var samples = new float[pos];
+                currentClip.GetData(samples, 0);
+                float peak = 0f;
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    float a = samples[i] < 0 ? -samples[i] : samples[i];
+                    if (a > peak) peak = a;
+                }
+                if (peak < openMicSilenceThreshold)
+                {
+                    // Silent chunk — skip transcription entirely.
+                    return;
+                }
+            }
+
             byte[] wavBytes = WavEncoder.EncodeWav(currentClip, pos);
             if (wavBytes == null || wavBytes.Length == 0) return;
 
@@ -142,27 +385,53 @@ namespace Tigerverse.Voice
 
         private IEnumerator SendToScribe(byte[] wavBytes)
         {
-            List<IMultipartFormSection> form = new()
-            {
-                new MultipartFormDataSection("model_id", "scribe_v1"),
-                new MultipartFormFileSection("file", wavBytes, "audio.wav", "audio/wav"),
-            };
+            // Prefer Groq's Whisper (whisper-large-v3-turbo) for sub-100ms
+            // transcription. Fall back to ElevenLabs Scribe only if Groq
+            // key isn't configured.
+            bool useGroq = config != null && !string.IsNullOrEmpty(config.groqApiKey);
+            string url = useGroq ? GroqWhisperUrl : ScribeUrl;
 
-            using UnityWebRequest req = UnityWebRequest.Post(ScribeUrl, form);
-            if (config != null && !string.IsNullOrEmpty(config.elevenLabsApiKey))
+            List<IMultipartFormSection> form;
+            if (useGroq)
+            {
+                form = new List<IMultipartFormSection>
+                {
+                    new MultipartFormDataSection("model", "whisper-large-v3-turbo"),
+                    new MultipartFormDataSection("response_format", "json"),
+                    new MultipartFormDataSection("temperature", "0"),
+                    new MultipartFormFileSection("file", wavBytes, "audio.wav", "audio/wav"),
+                };
+            }
+            else
+            {
+                form = new List<IMultipartFormSection>
+                {
+                    new MultipartFormDataSection("model_id", "scribe_v1"),
+                    new MultipartFormFileSection("file", wavBytes, "audio.wav", "audio/wav"),
+                };
+            }
+
+            float t0 = Time.realtimeSinceStartup;
+            using UnityWebRequest req = UnityWebRequest.Post(url, form);
+            if (useGroq)
+            {
+                req.SetRequestHeader("Authorization", "Bearer " + config.groqApiKey);
+            }
+            else if (config != null && !string.IsNullOrEmpty(config.elevenLabsApiKey))
             {
                 req.SetRequestHeader("xi-api-key", config.elevenLabsApiKey);
             }
             else
             {
-                Debug.LogWarning("[VoiceCommandRouter] ElevenLabs API key missing on BackendConfig.", this);
+                Debug.LogWarning("[VoiceCommandRouter] No transcription API key (groqApiKey or elevenLabsApiKey) on BackendConfig.", this);
             }
 
             yield return req.SendWebRequest();
+            float dt = Time.realtimeSinceStartup - t0;
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError($"[VoiceCommandRouter] Scribe request failed: {req.error}", this);
+                Debug.LogError($"[VoiceCommandRouter] Transcription request failed ({(useGroq ? "Groq" : "Scribe")}): HTTP {req.responseCode} {req.error} body={req.downloadHandler?.text}", this);
                 OnNoMatch?.Invoke($"[net error] {req.error}");
                 yield break;
             }
@@ -175,10 +444,11 @@ namespace Tigerverse.Voice
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[VoiceCommandRouter] Failed to parse Scribe response: {ex.Message}\n{body}", this);
+                Debug.LogError($"[VoiceCommandRouter] Failed to parse transcription response: {ex.Message}\n{body}", this);
             }
 
             LastTranscript = resp != null && resp.text != null ? resp.text : string.Empty;
+            Debug.Log($"[VoiceCommandRouter] Transcribed ({(useGroq ? "Groq Whisper" : "ElevenLabs Scribe")}, {dt:F2}s): '{LastTranscript}'");
             OnTranscript?.Invoke(LastTranscript);
             MatchAndCast(LastTranscript);
         }

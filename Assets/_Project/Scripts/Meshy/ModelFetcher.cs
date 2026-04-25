@@ -5,6 +5,7 @@ using GLTFast;
 using Tigerverse.Combat;
 using Tigerverse.Drawing;
 using Tigerverse.Net;
+using Tigerverse.UI;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -64,6 +65,20 @@ namespace Tigerverse.Meshy
                  ">0.5 routes to the legacy triplanar wrap (busy).")]
         [Range(0,1)] public float drawingDetailStrength = 0.18f;
 
+        [Header("Hatching Egg (3D wobble + crack + burst while monster loads)")]
+        [Tooltip("If true, spawn a procedural paper egg that wobbles + cracks while the GLB loads, then explodes open with the monster popping out.")]
+        public bool spawnHatchingEgg = true;
+        [Tooltip("Egg hover height above the spawn pivot in metres.")]
+        public float eggHoverHeight = 0.55f;
+        [Tooltip("Minimum total seconds the egg shows before hatching. If the GLB loads faster than this, we wait so judges actually get to enjoy the wobble. Set 0 to hatch immediately when ready.")]
+        public float eggMinShowSeconds = 3.0f;
+
+        // Dev override: when set, ModelFetcher uses this as drawingTex instead
+        // of fetching data.imageUrl. Cleared after one use. Set by editor-only
+        // dev menus that want to test the egg+hatch flow without uploading
+        // a real image to UploadThing.
+        [System.NonSerialized] public Texture2D devOverrideDrawingTex;
+
         public IEnumerator Fetch(PlayerData data, Transform parent, Action<GameObject, FetchError> onComplete)
         {
             if (data == null)
@@ -105,6 +120,90 @@ namespace Tigerverse.Meshy
                 yield break;
             }
 
+            // 0) Pre-fetch drawing image first (small, ~50–200KB) so we can
+            //    spawn the floating "drawing reveal" card immediately and
+            //    have something visual happening during the slow GLB load.
+            Texture2D drawingTex = devOverrideDrawingTex;
+            if (drawingTex != null)
+            {
+                Debug.Log("[ModelFetcher] Using devOverrideDrawingTex (skipping imageUrl fetch).");
+                devOverrideDrawingTex = null; // single-shot
+            }
+            if (drawingTex == null && !string.IsNullOrEmpty(data.imageUrl))
+            {
+                using (var imgReq = UnityWebRequestTexture.GetTexture(data.imageUrl))
+                {
+                    imgReq.timeout = requestTimeoutSec;
+                    yield return imgReq.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+                    bool imgErr = imgReq.result != UnityWebRequest.Result.Success;
+#else
+                    bool imgErr = imgReq.isNetworkError || imgReq.isHttpError;
+#endif
+                    if (imgErr || imgReq.responseCode >= 400)
+                        Debug.LogWarning($"[ModelFetcher] Pre-fetch drawing image failed: HTTP {imgReq.responseCode} {imgReq.error}");
+                    else
+                        drawingTex = DownloadHandlerTexture.GetContent(imgReq);
+                }
+            }
+
+            // 0b) Hatching egg: locate an existing one (spawned early by
+            //     MonsterSpawnSlotPresenter the moment the player submitted)
+            //     or spawn a new one now. Search broadly so we always find
+            //     the slot-presenter's egg, even when the parent transform
+            //     differs from the slot pivot it was spawned under.
+            Tigerverse.UI.HatchingEggSequence egg = null;
+            float eggSpawnTime = Time.time;
+            if (parent != null)
+            {
+                // (a) Direct descendants of parent.
+                egg = parent.GetComponentInChildren<Tigerverse.UI.HatchingEggSequence>(includeInactive: true);
+                // (b) Walk up — slot presenter usually spawns under a sibling/grandparent of `parent`.
+                Transform p = parent.parent;
+                while (egg == null && p != null)
+                {
+                    egg = p.GetComponentInChildren<Tigerverse.UI.HatchingEggSequence>(includeInactive: true);
+                    p = p.parent;
+                }
+                // (c) Fallback: closest egg in the scene within 2 m of parent.
+                if (egg == null)
+                {
+                    var allEggs = UnityEngine.Object.FindObjectsByType<Tigerverse.UI.HatchingEggSequence>(FindObjectsSortMode.None);
+                    float bestDist = 2f;
+                    foreach (var e in allEggs)
+                    {
+                        if (e == null) continue;
+                        float d = Vector3.Distance(e.transform.position, parent.position);
+                        if (d < bestDist) { bestDist = d; egg = e; }
+                    }
+                }
+            }
+
+            if (egg != null)
+            {
+                // Refresh the drawing on the existing egg (slot presenter
+                // didn't have a drawing texture yet when it spawned).
+                egg.Configure(drawingTex);
+                Debug.Log($"[ModelFetcher] Reusing existing egg '{egg.gameObject.name}' (under '{egg.transform.parent?.name ?? "<root>"}').");
+            }
+            else if (spawnHatchingEgg && parent != null)
+            {
+                var eggHost = new GameObject("HatchingEgg");
+                eggHost.transform.SetParent(parent, worldPositionStays: false);
+                eggHost.transform.localPosition = Vector3.up * eggHoverHeight;
+                eggHost.transform.localRotation = Quaternion.identity;
+                egg = eggHost.AddComponent<Tigerverse.UI.HatchingEggSequence>();
+                egg.Configure(drawingTex);
+                egg.progress01 = 0f;
+                StartCoroutine(egg.PlayPopInAnimation());
+                Debug.Log($"[ModelFetcher] Spawned NEW hatching egg under '{parent.name}'.");
+            }
+            else
+            {
+                Debug.LogWarning("[ModelFetcher] Hatching egg SKIPPED — spawnHatchingEgg=false or parent=null.");
+            }
+
             // 1) Download the GLB binary.
             byte[] glbBytes = null;
             using (var req = UnityWebRequest.Get(data.glbUrl))
@@ -134,6 +233,8 @@ namespace Tigerverse.Meshy
                 yield break;
             }
 
+            if (egg != null) egg.progress01 = 0.40f;
+
             // 2) Parse with glTFast.
             var gltf = new GltfImport();
             var loadTask = gltf.LoadGltfBinary(glbBytes);
@@ -145,6 +246,8 @@ namespace Tigerverse.Meshy
                 onComplete?.Invoke(null, FetchError.GltfImport);
                 yield break;
             }
+
+            if (egg != null) egg.progress01 = 0.65f;
 
             // 3) Create a container and instantiate the GLB scene under it.
             var container = new GameObject(string.IsNullOrEmpty(data.name) ? "Monster" : data.name);
@@ -164,33 +267,23 @@ namespace Tigerverse.Meshy
                 yield break;
             }
 
+            // 3b) If we're using the egg, hide all monster renderers from the
+            //     moment they exist. Otherwise the freshly-instantiated GLB is
+            //     visible alongside (and inside) the egg during the entire
+            //     wobble, ruining the surprise. The egg's BeginHatchSequence
+            //     re-enables them at the moment of the burst.
+            if (egg != null)
+            {
+                foreach (var r in container.GetComponentsInChildren<Renderer>(true))
+                    if (r != null) r.enabled = false;
+            }
+
             // 4) Auto-scale + recenter pivot to bottom-middle.
             AutoScaleAndCenter(container.transform, targetSizeMeters);
+            if (egg != null) egg.progress01 = 0.85f;
 
-            // 5) Download the drawing image.
-            Texture2D drawingTex = null;
-            if (!string.IsNullOrEmpty(data.imageUrl))
-            {
-                using (var imgReq = UnityWebRequestTexture.GetTexture(data.imageUrl))
-                {
-                    imgReq.timeout = requestTimeoutSec;
-                    yield return imgReq.SendWebRequest();
-
-#if UNITY_2020_1_OR_NEWER
-                    bool imgErr = imgReq.result != UnityWebRequest.Result.Success;
-#else
-                    bool imgErr = imgReq.isNetworkError || imgReq.isHttpError;
-#endif
-                    if (imgErr || imgReq.responseCode >= 400)
-                    {
-                        Debug.LogWarning($"[ModelFetcher] Drawing image download failed: HTTP {imgReq.responseCode} {imgReq.error}");
-                    }
-                    else
-                    {
-                        drawingTex = DownloadHandlerTexture.GetContent(imgReq);
-                    }
-                }
-            }
+            // 5) (Drawing image was pre-fetched at step 0 so the reveal card
+            //    could spawn during the slow GLB load.)
 
             // 6) Apply drawing onto the mesh.
             // Preferred: triplanar colorize — uses the drawing's dominant color as the tint
@@ -290,7 +383,44 @@ namespace Tigerverse.Meshy
                 }
             }
 
-            // 11) Done.
+            // 9.5) Floating stats card — appears when local player hovers near
+            //      the monster. Read-only display of HP/ATK/SPD/element/moves.
+            if (container.GetComponent<Tigerverse.Combat.MonsterHoverStats>() == null)
+            {
+                var hover = container.AddComponent<Tigerverse.Combat.MonsterHoverStats>();
+                hover.SetStats(data.stats);
+            }
+
+            // 11) Hatch the egg → reveal monster.
+            if (egg != null)
+            {
+                // Hold a beat so judges see the egg idle/wobble before it
+                // starts to crack. This eats up any leftover wait time.
+                float elapsed = Time.time - eggSpawnTime;
+                float remaining = Mathf.Max(0f, eggMinShowSeconds - elapsed);
+                if (remaining > 0f) yield return new WaitForSeconds(remaining);
+
+                // Animate cracks from 0 → 1 over 1.5s right before the
+                // burst, so the egg visibly cracks open at the climactic
+                // moment instead of having cracks slowly grow during the
+                // entire wait.
+                const float crackRampSec = 1.5f;
+                float crampT = 0f;
+                while (crampT < crackRampSec)
+                {
+                    crampT += Time.deltaTime;
+                    egg.progress01 = Mathf.Clamp01(crampT / crackRampSec);
+                    yield return null;
+                }
+                egg.progress01 = 1.0f;
+
+                bool hatched = false;
+                Vector3 spawnAt = parent.position + Vector3.up * 0.05f;
+                StartCoroutine(egg.BeginHatchSequence(container, spawnAt, () => hatched = true));
+                while (!hatched) yield return null;
+            }
+
+            // 12) Done.
             onComplete?.Invoke(container, FetchError.None);
         }
 
