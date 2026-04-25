@@ -9,27 +9,90 @@ namespace Tigerverse.Drawing
     /// </summary>
     public static class DrawingColorize
     {
-        public static void Apply(GameObject root, Texture2D drawingTex, float drawingStrength = 0.55f, float projectionScale = 0.6f)
+        public static void Apply(GameObject root, Texture2D drawingTex, float drawingStrength = 0.18f, float projectionScale = 1.5f)
         {
-            if (root == null || drawingTex == null) return;
-
-            var shader = Shader.Find("Tigerverse/DrawingTriplanar");
-            if (shader == null)
+            if (root == null)
             {
-                Debug.LogWarning("[DrawingColorize] Shader 'Tigerverse/DrawingTriplanar' not found; skipping colorize.");
+                Debug.LogWarning("[DrawingColorize] root is null — skipping.");
+                return;
+            }
+            if (drawingTex == null)
+            {
+                Debug.LogWarning($"[DrawingColorize] drawingTex is null on '{root.name}' — material won't be replaced. Check that the session's imageUrl is set + reachable.");
                 return;
             }
 
             Color tint = SampleDominantColor(drawingTex);
+            // Boost the tint a bit so the dominant color pops — sampling sometimes
+            // returns muted greys when ink is thin or anti-aliased.
+            tint = BoostSaturation(tint, 1.4f);
+
+            Shader stylized = Shader.Find("Tigerverse/DrawingStylized");
+            Shader triplanar = Shader.Find("Tigerverse/DrawingTriplanar");
+            Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
+            if (stylized == null)
+            {
+                Debug.LogWarning("[DrawingColorize] Stylized shader 'Tigerverse/DrawingStylized' not found. " +
+                                 "Falling back to URP/Lit. (Shader probably failed to compile — check Console for shader errors.)");
+            }
+
+            // Load Paper003 textures from Resources (download via Tigerverse → Textures → Download Paper003).
+            Texture2D paperColor = LoadPaperTex("Color");
+            Texture2D paperNormal = LoadPaperTex("NormalGL");
+            if (paperColor == null)
+            {
+                Debug.LogWarning("[DrawingColorize] No Paper003_Color texture in Resources/PaperTextures. Run 'Tigerverse → Textures → Download Paper003' to fetch it; shader will fall back to flat tint until then.");
+            }
+
+            // Compute the model's object-space bounding box once so the drawing's
+            // front-axis projection in the stylized shader is sized to fit the mesh.
+            Bounds objBounds = ComputeObjectBounds(root);
+            Vector4 bboxMin = new Vector4(objBounds.min.x, objBounds.min.y, objBounds.min.z, 0);
+            Vector4 bboxSize = new Vector4(
+                Mathf.Max(objBounds.size.x, 0.001f),
+                Mathf.Max(objBounds.size.y, 0.001f),
+                Mathf.Max(objBounds.size.z, 0.001f),
+                0);
+
+            // drawingStrength here doubles as the "drawing watermark hint" on the
+            // stylized shader. >0.5 still routes to the legacy triplanar in case
+            // someone wants the all-over wrap.
+            bool useLegacyTriplanar = drawingStrength > 0.5f && triplanar != null;
 
             var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true);
+            string usedShader = useLegacyTriplanar ? "DrawingTriplanar(legacy)"
+                              : (stylized != null ? "DrawingStylized" : "URP/Lit fallback");
+            Debug.Log($"[DrawingColorize] '{root.name}' tint=#{ColorUtility.ToHtmlStringRGB(tint)} " +
+                      $"renderers={renderers.Length} shader={usedShader} bbox={objBounds.size}");
             foreach (var rend in renderers)
             {
-                var mat = new Material(shader);
-                mat.SetTexture("_DrawingTex", drawingTex);
-                mat.SetColor("_BaseColor", tint);
-                mat.SetFloat("_ProjectionScale", projectionScale);
-                mat.SetFloat("_DrawingStrength", drawingStrength);
+                Material mat;
+                if (useLegacyTriplanar)
+                {
+                    mat = new Material(triplanar);
+                    mat.SetTexture("_DrawingTex", drawingTex);
+                    mat.SetColor("_BaseColor", tint);
+                    mat.SetFloat("_ProjectionScale", projectionScale);
+                    mat.SetFloat("_DrawingStrength", drawingStrength);
+                }
+                else if (stylized != null)
+                {
+                    mat = new Material(stylized);
+                    // Body is pure white paper now — tint is intentionally NOT used.
+                    mat.SetTexture("_DrawingTex", drawingTex);
+                    mat.SetVector("_BBoxMin", bboxMin);
+                    mat.SetVector("_BBoxSize", bboxSize);
+                    // Higher default hint so the doodle is the primary identifier of each monster.
+                    mat.SetFloat("_DrawingHint", Mathf.Clamp(drawingStrength <= 0.0001f ? 0.55f : drawingStrength, 0.05f, 0.95f));
+                    if (paperColor != null) mat.SetTexture("_PaperTex", paperColor);
+                    if (paperNormal != null) mat.SetTexture("_PaperNormalTex", paperNormal);
+                }
+                else
+                {
+                    mat = new Material(litShader != null ? litShader : Shader.Find("Standard"));
+                    mat.SetColor("_BaseColor", tint);
+                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+                }
 
                 int slotCount = rend.sharedMaterials != null ? rend.sharedMaterials.Length : 1;
                 if (slotCount <= 1)
@@ -43,6 +106,56 @@ namespace Tigerverse.Drawing
                     rend.materials = arr;
                 }
             }
+        }
+
+        // Compute the union of all child mesh bounds in the root's local space.
+        private static Bounds ComputeObjectBounds(GameObject root)
+        {
+            var meshFilters = root.GetComponentsInChildren<MeshFilter>(includeInactive: true);
+            var skinneds = root.GetComponentsInChildren<SkinnedMeshRenderer>(includeInactive: true);
+            Bounds b = new Bounds(Vector3.zero, Vector3.one); bool any = false;
+
+            foreach (var mf in meshFilters)
+            {
+                if (mf == null || mf.sharedMesh == null) continue;
+                var mb = mf.sharedMesh.bounds;
+                if (!any) { b = mb; any = true; } else b.Encapsulate(mb);
+            }
+            foreach (var s in skinneds)
+            {
+                if (s == null || s.sharedMesh == null) continue;
+                var mb = s.sharedMesh.bounds;
+                if (!any) { b = mb; any = true; } else b.Encapsulate(mb);
+            }
+            if (!any) b = new Bounds(Vector3.zero, Vector3.one);
+            return b;
+        }
+
+        // Loads the Paper003 texture variant from Resources/PaperTextures/.
+        // The ambientCG zip extracts files like "Paper003_1K-JPG_Color.jpg",
+        // "Paper003_1K-JPG_NormalGL.jpg", etc. We scan the Resources subfolder
+        // by suffix so any naming variant works.
+        private static Texture2D[] _allPaperTextures;
+        private static Texture2D LoadPaperTex(string suffix)
+        {
+            if (_allPaperTextures == null)
+            {
+                _allPaperTextures = Resources.LoadAll<Texture2D>("PaperTextures");
+            }
+            foreach (var t in _allPaperTextures)
+            {
+                if (t == null) continue;
+                if (t.name.IndexOf(suffix, System.StringComparison.OrdinalIgnoreCase) >= 0) return t;
+            }
+            return null;
+        }
+
+        private static Color BoostSaturation(Color c, float factor)
+        {
+            Color.RGBToHSV(c, out float h, out float s, out float v);
+            s = Mathf.Clamp01(s * factor);
+            v = Mathf.Clamp01(v * 1.1f); // slight value boost too
+            return Color.HSVToRGB(h, s, v);
         }
 
         // Average ink color from non-white pixels. Walks every Nth pixel for speed.

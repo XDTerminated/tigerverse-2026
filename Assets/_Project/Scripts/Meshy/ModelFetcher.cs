@@ -58,7 +58,11 @@ namespace Tigerverse.Meshy
                  "the drawing as a subtle overlay so the monster matches your doodle's color without flat-sticker artifacts.")]
         public bool applyDrawingColorize = true;
 
-        [Range(0,1)] public float drawingDetailStrength = 0.55f;
+        [Tooltip("Drawing watermark hint on the front of the stylized shader. " +
+                 "0 = pure tint+rim+noise (clean creature look). " +
+                 "0.18 (default) = subtle doodle visible on front faces. " +
+                 ">0.5 routes to the legacy triplanar wrap (busy).")]
+        [Range(0,1)] public float drawingDetailStrength = 0.18f;
 
         public IEnumerator Fetch(PlayerData data, Transform parent, Action<GameObject, FetchError> onComplete)
         {
