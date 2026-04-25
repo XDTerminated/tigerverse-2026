@@ -1,12 +1,9 @@
-// In-memory session store. Survives across requests as long as the Vercel
-// function instance stays warm — fine for a 1–2 hour live demo. Swap for
-// Vercel KV / Upstash Redis later for cold-start persistence.
-//
-// Layout:
-//   sessions[code] = {
-//     p1: PlayerSlot,
-//     p2: PlayerSlot,
-//   }
+// Session store. Uses Upstash Redis (compatible with Vercel KV's REST envs)
+// when KV_REST_API_URL + KV_REST_API_TOKEN are set, otherwise falls back to
+// an in-memory Map for local dev. Vercel runs each API route as a separate
+// serverless function with isolated memory, so the in-memory fallback only
+// works when running `astro dev` locally — production must have the Redis
+// envs configured.
 
 export type PlayerStatus =
   | 'empty'
@@ -40,12 +37,24 @@ export interface Session {
   p2: PlayerSlot;
 }
 
-// Use globalThis so HMR in dev and serverless warm starts don't wipe the map.
+// ─── Storage backend selection ───────────────────────────────────────────────
+// Upstash Redis (REST) when env vars are present; in-memory Map otherwise.
+
+import { Redis } from '@upstash/redis';
+
+const KV_URL = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+const useRedis = !!(KV_URL && KV_TOKEN);
+const redis = useRedis ? new Redis({ url: KV_URL!, token: KV_TOKEN! }) : null;
+
 declare global {
   // eslint-disable-next-line no-var
   var __tigerverseSessions: Map<string, Session> | undefined;
+  // Keep an index of all known taskIds so findSlotByTaskId can resolve owners
+  // via Redis without scanning the whole keyspace.
+  // Format in Redis: hash 'tigerverse:taskMap' { [taskId]: 'CODE:1' or 'CODE:2' }
 }
-const sessions: Map<string, Session> =
+const memSessions: Map<string, Session> =
   globalThis.__tigerverseSessions ?? (globalThis.__tigerverseSessions = new Map());
 
 function emptySlot(): PlayerSlot {
@@ -60,32 +69,64 @@ function emptySlot(): PlayerSlot {
   };
 }
 
-export function getSession(code: string): Session {
+const SESSION_KEY = (code: string) => `tigerverse:session:${code.toUpperCase()}`;
+const TASKMAP_KEY = 'tigerverse:taskMap';
+const SESSION_TTL_SECONDS = 60 * 60 * 6; // 6h — sessions auto-expire
+
+export async function getSession(code: string): Promise<Session> {
   const upper = code.toUpperCase();
-  let s = sessions.get(upper);
+
+  if (useRedis && redis) {
+    const raw = await redis.get<Session>(SESSION_KEY(upper));
+    if (raw) return raw;
+    const fresh: Session = { code: upper, p1: emptySlot(), p2: emptySlot() };
+    await redis.set(SESSION_KEY(upper), fresh, { ex: SESSION_TTL_SECONDS });
+    return fresh;
+  }
+
+  let s = memSessions.get(upper);
   if (!s) {
     s = { code: upper, p1: emptySlot(), p2: emptySlot() };
-    sessions.set(upper, s);
+    memSessions.set(upper, s);
   }
   return s;
 }
 
-export function updateSlot(
+export async function updateSlot(
   code: string,
   slot: 1 | 2,
   patch: Partial<PlayerSlot>,
-): Session {
-  const s = getSession(code);
+): Promise<Session> {
+  const upper = code.toUpperCase();
+  const s = await getSession(upper);
   const key = slot === 1 ? 'p1' : 'p2';
   s[key] = { ...s[key], ...patch };
+
+  if (useRedis && redis) {
+    await redis.set(SESSION_KEY(upper), s, { ex: SESSION_TTL_SECONDS });
+    if (patch.taskId) {
+      // Index this taskId → "CODE:slot" so we can look it up later.
+      await redis.hset(TASKMAP_KEY, { [patch.taskId]: `${upper}:${slot}` });
+    }
+  } else {
+    memSessions.set(upper, s);
+  }
   return s;
 }
 
 // Find which slot (1 or 2) holds a given Meshy taskId across all sessions.
-export function findSlotByTaskId(
+export async function findSlotByTaskId(
   taskId: string,
-): { code: string; slot: 1 | 2 } | null {
-  for (const s of sessions.values()) {
+): Promise<{ code: string; slot: 1 | 2 } | null> {
+  if (useRedis && redis) {
+    const v = await redis.hget<string>(TASKMAP_KEY, taskId);
+    if (!v) return null;
+    const [code, slotStr] = v.split(':');
+    const slot = slotStr === '2' ? 2 : 1;
+    return { code, slot };
+  }
+
+  for (const s of memSessions.values()) {
     if (s.p1.taskId === taskId) return { code: s.code, slot: 1 };
     if (s.p2.taskId === taskId) return { code: s.code, slot: 2 };
   }

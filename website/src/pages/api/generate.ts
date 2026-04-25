@@ -75,14 +75,14 @@ export const POST: APIRoute = async ({ request }) => {
         try {
           const audio = await generateMonsterCry(name, preset.element);
           const cryUrl = await uploadAudioBuffer(audio, `${name}_cry`);
-          updateSlot(sessionCode, playerSlot, { cryUrl });
+          await updateSlot(sessionCode, playerSlot, { cryUrl });
           console.log(`[generate] cry uploaded for ${name}: ${cryUrl}`);
         } catch (e) {
           console.warn('[generate] cry generation/upload failed:', e);
         }
       })();
 
-      updateSlot(sessionCode, playerSlot, {
+      await updateSlot(sessionCode, playerSlot, {
         status: 'generating',
         name,
         taskId,

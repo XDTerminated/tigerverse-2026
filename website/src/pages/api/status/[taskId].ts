@@ -27,10 +27,10 @@ export const GET: APIRoute = async ({ params, url }) => {
       const permanentUrl = await uploadGlbFromUrl(glbUrl, name);
 
       // If this taskId is bound to a Tigerverse session, mark the slot ready.
-      const owner = findSlotByTaskId(taskId);
+      const owner = await findSlotByTaskId(taskId);
       if (owner) {
         // stats were already set at /api/generate time from the drawing's color.
-        updateSlot(owner.code, owner.slot, {
+        await updateSlot(owner.code, owner.slot, {
           status: 'ready',
           glbUrl: permanentUrl,
         });
@@ -45,9 +45,9 @@ export const GET: APIRoute = async ({ params, url }) => {
     }
 
     if (task.status === 'FAILED' || task.status === 'CANCELED' || task.status === 'EXPIRED') {
-      const owner = findSlotByTaskId(taskId);
+      const owner = await findSlotByTaskId(taskId);
       if (owner) {
-        updateSlot(owner.code, owner.slot, { status: 'error' });
+        await updateSlot(owner.code, owner.slot, { status: 'error' });
       }
       return Response.json({
         status: task.status,
@@ -56,7 +56,7 @@ export const GET: APIRoute = async ({ params, url }) => {
     }
 
     // In-progress: bubble the Meshy phase into our session as a coarse status.
-    const owner = findSlotByTaskId(taskId);
+    const owner = await findSlotByTaskId(taskId);
     if (owner) {
       const meshyToInternal: Record<string, 'generating' | 'rigging'> = {
         PENDING: 'generating',
@@ -64,7 +64,7 @@ export const GET: APIRoute = async ({ params, url }) => {
         QUEUED: 'generating',
       };
       const internal = meshyToInternal[task.status] ?? 'generating';
-      updateSlot(owner.code, owner.slot, { status: internal });
+      await updateSlot(owner.code, owner.slot, { status: internal });
     }
 
     return Response.json({

@@ -134,8 +134,12 @@ namespace Tigerverse.Net
                 yield break;
             }
 
+            Debug.Log($"[SessionApiClient] Starting poll for code='{code}' against {config.backendBaseUrl}");
+            int pollNum = 0;
+
             while (_polling)
             {
+                pollNum++;
                 bool gotResponse = false;
                 SessionData latest = null;
                 string err = null;
@@ -152,6 +156,9 @@ namespace Tigerverse.Net
                 if (gotResponse && latest != null)
                 {
                     _lastSession = latest;
+                    string s1 = latest.p1 != null ? (latest.p1.status ?? "?") : "null";
+                    string s2 = latest.p2 != null ? (latest.p2.status ?? "?") : "null";
+                    Debug.Log($"[SessionApiClient] poll #{pollNum} p1={s1} p2={s2} bothReady={latest.BothReady}");
                     onUpdate?.Invoke(latest);
                     if (latest.BothReady)
                     {
@@ -162,7 +169,11 @@ namespace Tigerverse.Net
                 }
                 else if (!string.IsNullOrEmpty(err))
                 {
-                    Debug.LogWarning($"[SessionApiClient] Poll fetch error: {err}");
+                    Debug.LogWarning($"[SessionApiClient] poll #{pollNum} fetch error: {err}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[SessionApiClient] poll #{pollNum} returned no data and no error");
                 }
 
                 float wait = Mathf.Max(0.25f, config.pollIntervalSec);

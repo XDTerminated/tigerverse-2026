@@ -13,13 +13,16 @@ importers:
         version: 5.0.4(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(jiti@2.6.1)(lightningcss@1.32.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@astrojs/vercel':
         specifier: ^10.0.5
-        version: 10.0.5(astro@6.1.9(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)))(react@19.2.5)(rollup@4.60.2)
+        version: 10.0.5(astro@6.1.9(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)))(react@19.2.5)(rollup@4.60.2)
       '@tailwindcss/vite':
         specifier: ^4.2.4
         version: 4.2.4(vite@7.3.2(jiti@2.6.1)(lightningcss@1.32.0))
+      '@upstash/redis':
+        specifier: ^1.34.4
+        version: 1.37.0
       astro:
         specifier: ^6.1.9
-        version: 6.1.9(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4))
+        version: 6.1.9(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4))
       react:
         specifier: ^19.2.5
         version: 19.2.5
@@ -998,6 +1001,9 @@ packages:
 
   '@uploadthing/shared@7.1.10':
     resolution: {integrity: sha512-R/XSA3SfCVnLIzFpXyGaKPfbwlYlWYSTuGjTFHuJhdAomuBuhopAHLh2Ois5fJibAHzi02uP1QCKbgTAdmArqg==}
+
+  '@upstash/redis@1.37.0':
+    resolution: {integrity: sha512-LqOJ3+XWPLSZ2rGSed5DYG3ixybxb8EhZu3yQqF7MdZX1wLBG/FRcI6xcUZXHy/SS7mmXWyadrud0HJHkOc+uw==}
 
   '@vercel/analytics@1.6.1':
     resolution: {integrity: sha512-oH9He/bEM+6oKlv3chWuOOcp8Y6fo6/PSro8hEkgCW3pu9/OiCXiUpRUogDh3Fs3LH2sosDrx8CxeOLBEE+afg==}
@@ -2348,14 +2354,14 @@ snapshots:
       is-wsl: 3.1.1
       which-pm-runs: 1.1.0
 
-  '@astrojs/vercel@10.0.5(astro@6.1.9(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)))(react@19.2.5)(rollup@4.60.2)':
+  '@astrojs/vercel@10.0.5(astro@6.1.9(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)))(react@19.2.5)(rollup@4.60.2)':
     dependencies:
       '@astrojs/internal-helpers': 0.9.0
       '@vercel/analytics': 1.6.1(react@19.2.5)
       '@vercel/functions': 3.4.4
       '@vercel/nft': 1.5.0(rollup@4.60.2)
       '@vercel/routing-utils': 5.3.3
-      astro: 6.1.9(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4))
+      astro: 6.1.9(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4))
       esbuild: 0.27.7
       tinyglobby: 0.2.16
     transitivePeerDependencies:
@@ -3078,6 +3084,10 @@ snapshots:
       effect: 3.17.7
       sqids: 0.3.0
 
+  '@upstash/redis@1.37.0':
+    dependencies:
+      uncrypto: 0.1.3
+
   '@vercel/analytics@1.6.1(react@19.2.5)':
     optionalDependencies:
       react: 19.2.5
@@ -3155,7 +3165,7 @@ snapshots:
 
   array-iterate@2.0.1: {}
 
-  astro@6.1.9(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)):
+  astro@6.1.9(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(jiti@2.6.1)(lightningcss@1.32.0)(rollup@4.60.2)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)):
     dependencies:
       '@astrojs/compiler': 3.0.1
       '@astrojs/internal-helpers': 0.9.0
@@ -3204,7 +3214,7 @@ snapshots:
       ultrahtml: 1.6.0
       unifont: 0.7.4
       unist-util-visit: 5.1.0
-      unstorage: 1.17.5(@vercel/functions@3.4.4)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4))
+      unstorage: 1.17.5(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4))
       vfile: 6.0.3
       vite: 7.3.2(jiti@2.6.1)(lightningcss@1.32.0)
       vitefu: 1.1.3(vite@7.3.2(jiti@2.6.1)(lightningcss@1.32.0))
@@ -4535,7 +4545,7 @@ snapshots:
       unist-util-is: 6.0.1
       unist-util-visit-parents: 6.0.2
 
-  unstorage@1.17.5(@vercel/functions@3.4.4)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)):
+  unstorage@1.17.5(@upstash/redis@1.37.0)(@vercel/functions@3.4.4)(uploadthing@7.7.4(h3@1.15.11)(tailwindcss@4.2.4)):
     dependencies:
       anymatch: 3.1.3
       chokidar: 5.0.0
@@ -4546,6 +4556,7 @@ snapshots:
       ofetch: 1.5.1
       ufo: 1.6.3
     optionalDependencies:
+      '@upstash/redis': 1.37.0
       '@vercel/functions': 3.4.4
       uploadthing: 7.7.4(h3@1.15.11)(tailwindcss@4.2.4)
 

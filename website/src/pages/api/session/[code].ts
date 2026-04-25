@@ -10,7 +10,7 @@ export const GET: APIRoute = async ({ params }) => {
     return Response.json({ error: 'code required' }, { status: 400 });
   }
 
-  const session = getSession(code);
+  const session = await getSession(code);
 
   // Map our internal status enum to the strings the Unity client expects.
   // Unity's SessionApiClient.SessionData expects: queued|generating|rigging|cry|ready|error
