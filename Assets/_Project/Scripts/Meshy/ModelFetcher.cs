@@ -213,7 +213,7 @@ namespace Tigerverse.Meshy
                 Debug.LogException(e);
             }
 
-            // 7) Download the cry audio.
+            // 7) Cry audio: prefer the server-provided cryUrl, fall back to client-side generation.
             AudioClip cryClip = null;
             if (!string.IsNullOrEmpty(data.cryUrl))
             {
@@ -236,6 +236,14 @@ namespace Tigerverse.Meshy
                         cryClip = DownloadHandlerAudioClip.GetContent(aReq);
                     }
                 }
+            }
+
+            // Fallback: if no cry yet and we have a name + element, generate locally via ElevenLabs.
+            if (cryClip == null && !string.IsNullOrEmpty(data.name))
+            {
+                string element = data.stats != null && !string.IsNullOrEmpty(data.stats.element) ? data.stats.element : "neutral";
+                yield return Tigerverse.Voice.CryGenerator.Generate(data.name, element, c => cryClip = c);
+                if (cryClip != null) Debug.Log($"[ModelFetcher] Generated cry locally for {data.name}.");
             }
 
             // 8) MonsterCry: get-or-add and set clip.
