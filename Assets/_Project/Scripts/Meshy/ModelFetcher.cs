@@ -26,6 +26,21 @@ namespace Tigerverse.Meshy
             GltfImport
         }
 
+        private static Color ParseElementColor(string element)
+        {
+            switch ((element ?? "neutral").ToLowerInvariant())
+            {
+                case "fire":     return new Color(1.0f, 0.45f, 0.2f);
+                case "water":    return new Color(0.3f, 0.6f, 1.0f);
+                case "electric": return new Color(1.0f, 0.95f, 0.3f);
+                case "earth":    return new Color(0.55f, 0.4f, 0.25f);
+                case "grass":    return new Color(0.4f, 0.85f, 0.4f);
+                case "ice":      return new Color(0.7f, 0.95f, 1.0f);
+                case "dark":     return new Color(0.45f, 0.25f, 0.55f);
+                default:         return new Color(0.7f, 0.7f, 0.7f);
+            }
+        }
+
         [Tooltip("If false, skip humanoid avatar setup even when one is present (use procedural fallback).")]
         public bool runHumanoidImport = true;
 
@@ -42,6 +57,33 @@ namespace Tigerverse.Meshy
                 onComplete?.Invoke(null, FetchError.NetworkGlb);
                 yield break;
             }
+
+            // Mock-mode shortcut: skip URL downloads, spawn a colored placeholder cube.
+            // Triggered when BackendConfig.useMock is true OR when the URL is the example.com placeholder.
+            var cfg = BackendConfig.Load();
+            bool isMock = (cfg != null && cfg.useMock)
+                          || (data.glbUrl != null && data.glbUrl.Contains("example.com"));
+            if (isMock)
+            {
+                var placeholder = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                placeholder.name = $"MonsterPlaceholder ({data.name ?? "monster"})";
+                placeholder.transform.SetParent(parent, false);
+                placeholder.transform.localPosition = Vector3.zero;
+                placeholder.transform.localScale = new Vector3(0.5f, 0.6f, 0.5f);
+
+                var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                Color tint = ParseElementColor(data.stats != null ? data.stats.element : "neutral");
+                mat.color = tint;
+                placeholder.GetComponent<Renderer>().sharedMaterial = mat;
+
+                // Add MonsterCry stub so BattleManager.cryA/cryB references resolve cleanly.
+                placeholder.AddComponent<Tigerverse.Combat.MonsterCry>();
+
+                Debug.Log($"[ModelFetcher] MOCK: spawned placeholder for '{data.name}' under '{parent.name}'");
+                onComplete?.Invoke(placeholder, FetchError.None);
+                yield break;
+            }
+
             if (string.IsNullOrEmpty(data.glbUrl))
             {
                 Debug.LogError("[ModelFetcher] glbUrl missing.");

@@ -152,11 +152,12 @@ namespace Tigerverse.Core
             else
             {
                 string baseUrl = config != null ? config.backendBaseUrl : string.Empty;
+                int slot = localCasterIndex + 1; // /join/CODE?p=1 for host, p=2 for joiner
                 foreach (var qr in qrDisplays)
                 {
                     if (qr != null)
                     {
-                        qr.ShowCode(baseUrl, sessionCode);
+                        qr.ShowCode(baseUrl, sessionCode, slot);
                     }
                 }
             }

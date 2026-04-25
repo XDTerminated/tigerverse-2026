@@ -15,7 +15,8 @@ namespace Tigerverse.Net
     /// Owns the Fusion NetworkRunner, hosts/joins a Shared-mode room by code,
     /// and spawns the SessionManager once connected (host only).
     /// </summary>
-    [RequireComponent(typeof(NetworkRunner))]
+    // No [RequireComponent(typeof(NetworkRunner))] — we destroy + recreate it on each
+    // host/join cycle (Fusion runners are single-use), and RequireComponent would block DestroyImmediate.
     public class SessionRunner : MonoBehaviour, INetworkRunnerCallbacks
     {
         [Tooltip("Prefab containing the SessionManager NetworkBehaviour. Drag the SessionManager.prefab here.")]
@@ -66,12 +67,20 @@ namespace Tigerverse.Net
                     Debug.Log("[SessionRunner] Recycling NetworkRunner (was used previously).");
                     if (Runner.IsRunning) await Runner.Shutdown();
                     DestroyImmediate(Runner);
-                    Runner = gameObject.AddComponent<NetworkRunner>();
-                    Runner.AddCallbacks(this);
+                    Runner = null;
                 }
-                else if (Runner == null)
+                if (Runner == null)
                 {
-                    Runner = GetComponent<NetworkRunner>() ?? gameObject.AddComponent<NetworkRunner>();
+                    Runner = GetComponent<NetworkRunner>();
+                    if (Runner == null)
+                    {
+                        Runner = gameObject.AddComponent<NetworkRunner>();
+                    }
+                    if (Runner == null)
+                    {
+                        Debug.LogError("[SessionRunner] Failed to add NetworkRunner. RequireComponent or DisallowMultipleComponent conflict?");
+                        return false;
+                    }
                     Runner.AddCallbacks(this);
                 }
 

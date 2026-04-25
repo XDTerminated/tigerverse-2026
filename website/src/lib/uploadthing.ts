@@ -19,3 +19,21 @@ export async function uploadGlbFromUrl(sourceUrl: string, name: string): Promise
   }
   return result.data.ufsUrl;
 }
+
+// Upload a base64 data URI (data:image/png;base64,...) to UploadThing and
+// return the public URL. Used to host the drawing image so the Quest can
+// fetch it via UnityWebRequestTexture.
+export async function uploadImageFromDataUri(dataUri: string, name: string): Promise<string> {
+  const m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(dataUri);
+  if (!m) throw new Error('Invalid image data URI');
+  const mime = m[1];
+  const ext = mime.split('/')[1] ?? 'png';
+  const buffer = Buffer.from(m[2], 'base64');
+  const safeName = `${name.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 64) || 'drawing'}.${ext}`;
+  const file = new UTFile([buffer], safeName, { type: mime });
+  const result = await utapi.uploadFiles(file);
+  if (result.error) {
+    throw new Error(`UploadThing image failed: ${result.error.message}`);
+  }
+  return result.data.ufsUrl;
+}

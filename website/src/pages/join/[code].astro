@@ -1,0 +1,31 @@
+---
+import App from '../../components/App';
+import '../../styles/global.css';
+export const prerender = false;
+
+const rawCode = (Astro.params.code ?? '').toUpperCase();
+const code = rawCode.replace(/[^A-Z0-9]/g, '').slice(0, 4);
+
+// Player slot is passed via ?p=1 or ?p=2. Default to 1 if not provided.
+// Tigerverse's QR code is per-player so the URL the host shows them can
+// hard-code their slot.
+const slotRaw = Astro.url.searchParams.get('p');
+const slot: 1 | 2 = slotRaw === '2' ? 2 : 1;
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Tigerverse — Room {code}</title>
+	</head>
+	<body>
+		<div class="fixed top-0 left-0 right-0 z-30 bg-black text-white px-4 py-2 text-center text-sm">
+			Room <strong>{code}</strong> · You are Player <strong>{slot}</strong>
+		</div>
+		<App client:only="react" sessionCode={code} playerSlot={slot} />
+	</body>
+</html>

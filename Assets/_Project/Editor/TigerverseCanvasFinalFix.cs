@@ -42,24 +42,32 @@ namespace Tigerverse.EditorTools
 
             // Make the canvas tall enough to hold buttons + input + keyboard.
             var rt = canvasGo.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(700, 900);
+            rt.sizeDelta = new Vector2(700, 1000); // taller so the StatusLabel fits inside
 
-            // Re-layout existing children to fit the new canvas.
+            // Re-layout existing children to fit the new canvas (y in canvas-local coords; +Y = up).
+            // Canvas center is y=0; canvas top = +500, canvas bottom = -500.
             var hostBtn = GameObject.Find("HostButton");
             var joinBtn = GameObject.Find("JoinButton");
             var input = GameObject.Find("CodeInput");
             var status = GameObject.Find("StatusLabel");
-            if (hostBtn != null) ((RectTransform)hostBtn.transform).anchoredPosition = new Vector2(0, 380);
-            if (joinBtn != null) ((RectTransform)joinBtn.transform).anchoredPosition = new Vector2(0, 260);
-            if (input != null)   ((RectTransform)input.transform).anchoredPosition   = new Vector2(0, 130);
-            if (status != null)  ((RectTransform)status.transform).anchoredPosition  = new Vector2(0, 430);
+            if (status != null)
+            {
+                var sRt = (RectTransform)status.transform;
+                sRt.sizeDelta = new Vector2(680, 90);          // shorter so it fits
+                sRt.anchoredPosition = new Vector2(0, 440);    // top of canvas (+500); top edge = +485 ✓
+            }
+            if (hostBtn != null) ((RectTransform)hostBtn.transform).anchoredPosition = new Vector2(0, 330);
+            if (joinBtn != null) ((RectTransform)joinBtn.transform).anchoredPosition = new Vector2(0, 220);
+            if (input != null)   ((RectTransform)input.transform).anchoredPosition   = new Vector2(0, 100);
 
             var canvas = canvasGo.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.worldCamera = origin.Camera;
 
-            // Add fresh TrackedDeviceGraphicRaycaster.
+            // Add BOTH raycasters: TrackedDeviceGraphicRaycaster for XR controller rays,
+            // plain GraphicRaycaster for mouse clicks (flat-mode editor / Multiplayer Play Mode).
             canvasGo.AddComponent<TrackedDeviceGraphicRaycaster>();
+            canvasGo.AddComponent<UnityEngine.UI.GraphicRaycaster>();
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);

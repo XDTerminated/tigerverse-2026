@@ -12,15 +12,17 @@ namespace Tigerverse.UI
         [SerializeField] private RawImage targetImage;
         [SerializeField] private TMP_Text fallbackTextLabel;
         [SerializeField] private int textureSize = 512;
-        [SerializeField] private string urlTemplate = "{0}/join/{1}";
+        [SerializeField] private string urlTemplate = "{0}/join/{1}?p={2}";
 
         public string LastUrl { get; private set; }
 
         private static bool warnedNoZxing;
 
-        public void ShowCode(string baseUrl, string code)
+        public void ShowCode(string baseUrl, string code) => ShowCode(baseUrl, code, 1);
+
+        public void ShowCode(string baseUrl, string code, int playerSlot)
         {
-            LastUrl = string.Format(urlTemplate, baseUrl, code);
+            LastUrl = string.Format(urlTemplate, baseUrl, code, playerSlot);
 
             if (fallbackTextLabel != null)
             {

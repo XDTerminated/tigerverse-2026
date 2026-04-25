@@ -21,7 +21,12 @@ type Phase =
   | { kind: 'done'; modelUrl: string; name: string }
   | { kind: 'error'; message: string };
 
-export default function App() {
+interface AppProps {
+  sessionCode?: string;
+  playerSlot?: 1 | 2;
+}
+
+export default function App({ sessionCode, playerSlot }: AppProps = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: 'drawing' });
   const [name, setName] = useState('');
   const [brushSize, setBrushSize] = useState(12);
@@ -147,7 +152,12 @@ export default function App() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageDataUri: dataUri, name: trimmed }),
+        body: JSON.stringify({
+          imageDataUri: dataUri,
+          name: trimmed,
+          sessionCode,
+          playerSlot,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
