@@ -577,7 +577,12 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
       {previewDataUri && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center px-4 z-50"
-          onClick={closePreview}
+          onClick={(e) => {
+            // Only close when the click is directly on the backdrop, not when
+            // it bubbles up from anywhere inside (or from synthesized clicks
+            // iOS Safari fires after keyboard dismissal).
+            if (e.target === e.currentTarget) closePreview();
+          }}
         >
           <div
             className="bg-white border-2 border-black rounded-sm p-7 w-full max-w-3xl flex flex-col gap-5"
@@ -625,12 +630,10 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                // Enter just dismisses the keyboard. Modal stays open until
-                // the user explicitly taps "bring my doodle to life".
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  (e.target as HTMLInputElement).blur();
-                }
+                // Swallow Enter entirely. Calling blur() on iOS Safari can
+                // trigger a viewport resize and a phantom click on the
+                // backdrop, which used to dismiss the modal.
+                if (e.key === 'Enter') e.preventDefault();
               }}
               placeholder="name your doodle"
               className="w-full h-12 px-4 border-2 border-black rounded-sm focus:outline-none text-lg bg-white"
