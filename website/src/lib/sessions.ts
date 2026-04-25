@@ -92,34 +92,82 @@ export function findSlotByTaskId(
   return null;
 }
 
-// Hardcoded stat presets keyed by element. Cycles through to give each player
-// distinct stats without an LLM call. Move pool matches Unity's MoveCatalog.
-const PRESETS: PlayerSlot['stats'][] = [
-  {
-    hp: 110, attackMult: 1.05, speed: 1.2, element: 'electric',
-    moves: ['Thunderbolt', 'Iceshard', 'Healingaura'],
+// Element-themed stat presets. Each player gets stats matched to the element
+// derived from their drawing's dominant ink color (computed in /api/generate).
+// Move pool matches Unity's MoveCatalog exactly.
+const PRESETS_BY_ELEMENT: Record<string, NonNullable<PlayerSlot['stats']>> = {
+  fire: {
+    hp: 110, attackMult: 1.15, speed: 1.05, element: 'fire',
+    moves: ['Fireball', 'Shadowbite', 'Taunt'],
+    flavorText: 'Born of flame and fury.',
+  },
+  water: {
+    hp: 120, attackMult: 1.0, speed: 0.95, element: 'water',
+    moves: ['Watergun', 'Iceshard', 'Healingaura'],
+    flavorText: 'Tides answer its call.',
+  },
+  electric: {
+    hp: 95, attackMult: 1.05, speed: 1.3, element: 'electric',
+    moves: ['Thunderbolt', 'Shadowbite', 'Dodge'],
     flavorText: 'A static-charged rodent.',
   },
-  {
-    hp: 120, attackMult: 1.0, speed: 1.0, element: 'fire',
-    moves: ['Fireball', 'Watergun', 'Taunt'],
-    flavorText: 'A blazing winged beast.',
-  },
-  {
-    hp: 95, attackMult: 1.2, speed: 1.3, element: 'grass',
-    moves: ['Leafblade', 'Healingaura', 'Dodge'],
-    flavorText: 'Quick and verdant.',
-  },
-  {
-    hp: 130, attackMult: 0.9, speed: 0.85, element: 'earth',
-    moves: ['Rocksmash', 'Shadowbite', 'Taunt'],
+  earth: {
+    hp: 140, attackMult: 1.1, speed: 0.8, element: 'earth',
+    moves: ['Rocksmash', 'Leafblade', 'Taunt'],
     flavorText: 'Slow but unbreakable.',
   },
-];
+  grass: {
+    hp: 105, attackMult: 1.0, speed: 1.15, element: 'grass',
+    moves: ['Leafblade', 'Healingaura', 'Watergun'],
+    flavorText: 'Quick and verdant.',
+  },
+  ice: {
+    hp: 100, attackMult: 1.1, speed: 1.0, element: 'ice',
+    moves: ['Iceshard', 'Watergun', 'Dodge'],
+    flavorText: 'Frostbitten and sharp.',
+  },
+  dark: {
+    hp: 115, attackMult: 1.2, speed: 1.05, element: 'dark',
+    moves: ['Shadowbite', 'Taunt', 'Dodge'],
+    flavorText: 'Strikes from shadow.',
+  },
+  neutral: {
+    hp: 110, attackMult: 1.0, speed: 1.0, element: 'neutral',
+    moves: ['Rocksmash', 'Healingaura', 'Dodge'],
+    flavorText: 'Balanced and adaptable.',
+  },
+};
 
-let _presetCursor = 0;
-export function nextPreset(): PlayerSlot['stats'] {
-  const p = PRESETS[_presetCursor % PRESETS.length];
-  _presetCursor++;
-  return p ? { ...p } : null;
+export function presetForElement(element: string): NonNullable<PlayerSlot['stats']> {
+  const key = (element ?? 'neutral').toLowerCase();
+  return { ...(PRESETS_BY_ELEMENT[key] ?? PRESETS_BY_ELEMENT.neutral) };
+}
+
+// Map an RGB color (0-255) to one of our 8 element keys based on hue + saturation.
+export function elementFromRgb(r: number, g: number, b: number): string {
+  // Greyscale-ish → earth (brown) or neutral
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const sat = max === 0 ? 0 : (max - min) / max;
+  if (sat < 0.18) {
+    // Very low saturation. Dark → dark, mid → earth, light → ice.
+    if (max < 70) return 'dark';
+    if (max > 200) return 'ice';
+    return 'earth';
+  }
+  // Hue calc (0-360)
+  let h = 0;
+  if (max === r) h = ((g - b) / (max - min)) * 60;
+  else if (max === g) h = ((b - r) / (max - min)) * 60 + 120;
+  else h = ((r - g) / (max - min)) * 60 + 240;
+  if (h < 0) h += 360;
+
+  if (h < 18 || h >= 340) return 'fire';     // red
+  if (h < 45)  return 'fire';                 // orange (still fire)
+  if (h < 70)  return 'electric';             // yellow
+  if (h < 170) return 'grass';                // green / teal-green
+  if (h < 200) return 'ice';                  // cyan
+  if (h < 260) return 'water';                // blue
+  if (h < 320) return 'dark';                 // purple / magenta
+  return 'fire';                              // pinks → fire
 }

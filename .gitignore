@@ -106,5 +106,9 @@ InitTestScene*.unity*
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
 
+# Tigerverse — secrets baked into BackendConfig (ElevenLabs / Photon keys).
+# Stays on disk; git stops tracking after `git rm --cached <path>` once.
+/Assets/_Project/Resources/BackendConfig.asset
+
 # Environment
 .env

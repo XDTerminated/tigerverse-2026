@@ -347,6 +347,16 @@ namespace Tigerverse.Core
                 {
                     var statsForLocal = localCasterIndex == 0 ? statsA : statsB;
                     voiceRouter.Bind(battle, localCasterIndex, statsForLocal != null ? statsForLocal.moves : null);
+
+                    // Announce the local player's moves via TTS so they know what to call out.
+                    var ann = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
+                    if (ann != null && statsForLocal != null && statsForLocal.moves != null && statsForLocal.moves.Length > 0)
+                    {
+                        var moveNames = new System.Collections.Generic.List<string>();
+                        foreach (var m in statsForLocal.moves) if (m != null) moveNames.Add(m.displayName);
+                        string list = string.Join(", ", moveNames);
+                        ann.Say($"Your monster {statsForLocal.displayName} knows: {list}. Press grip and shout a move name to attack.");
+                    }
                 }
             }
             else

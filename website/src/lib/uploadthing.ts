@@ -20,6 +20,15 @@ export async function uploadGlbFromUrl(sourceUrl: string, name: string): Promise
   return result.data.ufsUrl;
 }
 
+// Upload a raw audio buffer (mp3) to UploadThing and return its public URL.
+export async function uploadAudioBuffer(buffer: Buffer, name: string, ext = 'mp3'): Promise<string> {
+  const safeName = `${name.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 64) || 'audio'}.${ext}`;
+  const file = new UTFile([buffer], safeName, { type: ext === 'mp3' ? 'audio/mpeg' : 'audio/wav' });
+  const result = await utapi.uploadFiles(file);
+  if (result.error) throw new Error(`UploadThing audio failed: ${result.error.message}`);
+  return result.data.ufsUrl;
+}
+
 // Upload a base64 data URI (data:image/png;base64,...) to UploadThing and
 // return the public URL. Used to host the drawing image so the Quest can
 // fetch it via UnityWebRequestTexture.

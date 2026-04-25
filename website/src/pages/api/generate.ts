@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro';
 import { createImageTo3dTask } from '../../lib/meshy';
-import { uploadImageFromDataUri } from '../../lib/uploadthing';
-import { updateSlot } from '../../lib/sessions';
+import { uploadImageFromDataUri, uploadAudioBuffer } from '../../lib/uploadthing';
+import { updateSlot, presetForElement, elementFromRgb } from '../../lib/sessions';
+import { dominantInkRgbFromDataUri } from '../../lib/imageColor';
+import { generateMonsterCry } from '../../lib/eleven';
 
 export const prerender = false;
 
@@ -34,21 +36,47 @@ export const POST: APIRoute = async ({ request }) => {
     // Quest game and the /api/status/[taskId] route can flip the slot to
     // 'ready' once Meshy finishes.
     if (sessionCode && (playerSlot === 1 || playerSlot === 2)) {
-      // Upload the raw drawing to UploadThing so the Quest can fetch it as a
-      // standard https URL via UnityWebRequestTexture.GetTexture and apply it
-      // via the DrawingProjection shader. Failure here is non-fatal — we still
-      // return the Meshy taskId so the model pipeline progresses.
+      // Upload drawing to UploadThing for Unity to fetch.
       let imageUrl: string | null = null;
       try {
         imageUrl = await uploadImageFromDataUri(imageDataUri, `${name}_drawing`);
       } catch (e) {
         console.warn('[generate] drawing upload failed, continuing without image URL:', e);
       }
+
+      // Derive element + stats from the drawing's dominant ink color.
+      let preset = presetForElement('neutral');
+      try {
+        const ink = await dominantInkRgbFromDataUri(imageDataUri);
+        const element = elementFromRgb(ink.r, ink.g, ink.b);
+        preset = presetForElement(element);
+        console.log(`[generate] ink=rgb(${ink.r},${ink.g},${ink.b}) → element=${element} → moves=${preset.moves.join(',')}`);
+      } catch (e) {
+        console.warn('[generate] color analysis failed, using neutral:', e);
+      }
+
+      // Inject the player's chosen name into the flavor text for personality.
+      preset.flavorText = `${name}: ${preset.flavorText}`;
+
+      // Fire-and-forget: ElevenLabs Sound Effects → mp3 → UploadThing → write cryUrl onto slot.
+      // The Quest polls every 3s; whenever this resolves, the next poll picks it up.
+      (async () => {
+        try {
+          const audio = await generateMonsterCry(name, preset.element);
+          const cryUrl = await uploadAudioBuffer(audio, `${name}_cry`);
+          updateSlot(sessionCode, playerSlot, { cryUrl });
+          console.log(`[generate] cry uploaded for ${name}: ${cryUrl}`);
+        } catch (e) {
+          console.warn('[generate] cry generation/upload failed:', e);
+        }
+      })();
+
       updateSlot(sessionCode, playerSlot, {
         status: 'generating',
         name,
         taskId,
         imageUrl,
+        stats: preset, // available immediately so Unity can announce moves before Meshy finishes
       });
     }
 

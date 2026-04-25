@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getTask } from '../../../lib/meshy';
 import { uploadGlbFromUrl } from '../../../lib/uploadthing';
-import { findSlotByTaskId, updateSlot, nextPreset } from '../../../lib/sessions';
+import { findSlotByTaskId, updateSlot } from '../../../lib/sessions';
 
 export const prerender = false;
 
@@ -29,10 +29,10 @@ export const GET: APIRoute = async ({ params, url }) => {
       // If this taskId is bound to a Tigerverse session, mark the slot ready.
       const owner = findSlotByTaskId(taskId);
       if (owner) {
+        // stats were already set at /api/generate time from the drawing's color.
         updateSlot(owner.code, owner.slot, {
           status: 'ready',
           glbUrl: permanentUrl,
-          stats: nextPreset(),
         });
       }
 

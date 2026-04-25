@@ -16,6 +16,7 @@ export default defineConfig({
     schema: {
       MESHY_API_KEY: envField.string({ context: 'server', access: 'secret' }),
       UPLOADTHING_TOKEN: envField.string({ context: 'server', access: 'secret' }),
+      ELEVENLABS_API_KEY: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
 });

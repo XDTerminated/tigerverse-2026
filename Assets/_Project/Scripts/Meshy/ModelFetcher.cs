@@ -50,6 +50,16 @@ namespace Tigerverse.Meshy
         [Tooltip("Web request timeout in seconds for GLB / image / cry downloads.")]
         public int requestTimeoutSec = 30;
 
+        [Tooltip("If true, paint the player's drawing across the GLB via flat planar DrawingProjector. " +
+                 "Looks like a sticker — usually leave OFF.")]
+        public bool applyDrawingProjection = false;
+
+        [Tooltip("If true (recommended), tint the GLB by the drawing's dominant color and triplanar-project " +
+                 "the drawing as a subtle overlay so the monster matches your doodle's color without flat-sticker artifacts.")]
+        public bool applyDrawingColorize = true;
+
+        [Range(0,1)] public float drawingDetailStrength = 0.55f;
+
         public IEnumerator Fetch(PlayerData data, Transform parent, Action<GameObject, FetchError> onComplete)
         {
             if (data == null)
@@ -178,12 +188,25 @@ namespace Tigerverse.Meshy
                 }
             }
 
-            // 6) DrawingProjector: get-or-add and apply the texture.
-            var projector = container.GetComponent<DrawingProjector>();
-            if (projector == null) projector = container.AddComponent<DrawingProjector>();
+            // 6) Apply drawing onto the mesh.
+            // Preferred: triplanar colorize — uses the drawing's dominant color as the tint
+            // and softly wraps drawing detail across 3 axes. Looks like the doodle, not a sticker.
+            // Optional: flat planar projection (legacy DrawingProjector) for the original "sticker" look.
             try
             {
-                if (drawingTex != null) projector.ApplyDrawing(drawingTex);
+                if (drawingTex != null)
+                {
+                    if (applyDrawingColorize)
+                    {
+                        DrawingColorize.Apply(container, drawingTex, drawingDetailStrength);
+                    }
+                    else if (applyDrawingProjection)
+                    {
+                        var projector = container.GetComponent<DrawingProjector>();
+                        if (projector == null) projector = container.AddComponent<DrawingProjector>();
+                        projector.ApplyDrawing(drawingTex);
+                    }
+                }
             }
             catch (Exception e)
             {

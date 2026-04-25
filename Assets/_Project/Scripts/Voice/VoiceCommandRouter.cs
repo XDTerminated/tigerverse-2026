@@ -66,34 +66,42 @@ namespace Tigerverse.Voice
             this.availableMoves = availableMoves;
         }
 
+        // Tap-to-record mode: press once → records for `tapRecordSec` seconds → auto-processes.
+        // Trigger is the UI click button, so voice activates on RIGHT GRIP (and Spacebar in editor).
+        [SerializeField] private float tapRecordSec = 4f;
+        private float _autoStopAt;
+
         private void Update()
         {
-            bool pressed = false;
-
-            InputDevice rh = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-            if (rh.isValid && rh.TryGetFeatureValue(CommonUsages.triggerButton, out bool triggerPressed))
-            {
-                pressed = triggerPressed;
-            }
-
-            // Editor / desktop fallback: spacebar (uses Input System).
-            bool spaceNow = UnityEngine.InputSystem.Keyboard.current != null
-                && UnityEngine.InputSystem.Keyboard.current.spaceKey.isPressed;
-            if (spaceNow != spaceWasPressed)
-            {
-                spaceWasPressed = spaceNow;
-            }
-            pressed = pressed || spaceNow;
-
-            if (pressed && !triggerWasPressed)
-            {
-                BeginRecord();
-            }
-            else if (!pressed && triggerWasPressed)
+            // Auto-stop when the recording window expires.
+            if (isRecording && Time.unscaledTime >= _autoStopAt)
             {
                 EndRecord();
+                return;
             }
-            triggerWasPressed = pressed;
+            if (isRecording) return; // ignore new presses while a record is in flight
+
+            bool tap = false;
+
+            // Right grip (Quest Touch): pressed-this-frame edge.
+            InputDevice rh = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            if (rh.isValid && rh.TryGetFeatureValue(CommonUsages.gripButton, out bool gripPressed))
+            {
+                if (gripPressed && !triggerWasPressed) tap = true;
+                triggerWasPressed = gripPressed;
+            }
+
+            // Editor / desktop fallback: spacebar (uses Input System) press-edge.
+            bool spaceNow = UnityEngine.InputSystem.Keyboard.current != null
+                && UnityEngine.InputSystem.Keyboard.current.spaceKey.isPressed;
+            if (spaceNow && !spaceWasPressed) tap = true;
+            spaceWasPressed = spaceNow;
+
+            if (tap)
+            {
+                BeginRecord();
+                _autoStopAt = Time.unscaledTime + tapRecordSec;
+            }
         }
 
         private void BeginRecord()
