@@ -63,6 +63,7 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
     'idle',
   );
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const canvasRef = useRef<DrawingCanvasHandle>(null);
 
   const handleFinish = () => {
@@ -166,17 +167,19 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
 
   const handleSubmit = async () => {
     const trimmed = name.trim();
-    if (!previewDataUri || !trimmed) return;
+    if (!previewDataUri || !trimmed || isSubmitting) return;
 
-    const dataUri = previewDataUri;
-    closePreview();
-
+    // Keep the modal open and show a spinner on the submit button until the
+    // /api/generate call resolves. Closing it earlier creates a stretch where
+    // phase.kind is still 'drawing' and the user sees the canvas, mistaking
+    // it for the click being ignored.
+    setIsSubmitting(true);
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageDataUri: dataUri,
+          imageDataUri: previewDataUri,
           name: trimmed,
           sessionCode,
           playerSlot,
@@ -185,6 +188,7 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
       const data = await res.json();
       if (!res.ok) {
         setPhase({ kind: 'error', message: data.error ?? `HTTP ${res.status}` });
+        closePreview();
         return;
       }
       setPhase({
@@ -194,8 +198,12 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
         progress: 0,
         status: 'PENDING',
       });
+      closePreview();
     } catch (err) {
       setPhase({ kind: 'error', message: (err as Error).message });
+      closePreview();
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -245,6 +253,7 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
     setSelectedTraits([]);
     setVoiceState('idle');
     setVoiceError(null);
+    setIsSubmitting(false);
     setPhase({ kind: 'drawing' });
   };
 
@@ -648,11 +657,20 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={!name.trim()}
+                disabled={!name.trim() || isSubmitting}
                 className="flex-1 h-12 px-5 bg-black text-white rounded-sm hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all duration-100 flex items-center justify-center gap-2 text-lg"
               >
-                <Icon name="magic-wand" className="w-6 h-6" />
-                bring my doodle to life
+                {isSubmitting ? (
+                  <>
+                    <Icon name="sync" spin className="w-6 h-6" />
+                    sending…
+                  </>
+                ) : (
+                  <>
+                    <Icon name="magic-wand" className="w-6 h-6" />
+                    bring my doodle to life
+                  </>
+                )}
               </button>
             </div>
           </div>

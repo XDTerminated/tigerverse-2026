@@ -23,8 +23,8 @@ const slot: 1 | 2 = slotRaw === '2' ? 2 : 1;
 		<title>Tigerverse — Room {code}</title>
 	</head>
 	<body>
-		<div class="fixed top-0 left-20 right-0 z-30 bg-black text-white px-4 py-2 text-center text-sm">
-			Room <strong>{code}</strong> · You are Player <strong>{slot}</strong>
+		<div class="fixed top-2 left-0 z-30 bg-black text-white px-3 py-1 text-sm rounded-r-sm">
+			Room <strong>{code}</strong> · Player <strong>{slot}</strong>
 		</div>
 		<App client:only="react" sessionCode={code} playerSlot={slot} />
 	</body>
