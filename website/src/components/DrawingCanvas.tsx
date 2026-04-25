@@ -157,76 +157,101 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
     [],
   );
 
-  const getCanvasPointFromClient = (clientX: number, clientY: number): Point => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    return {
-      x: (clientX - rect.left) * dpr,
-      y: (clientY - rect.top) * dpr,
+  // Native event listeners — React 19 attaches touch listeners as passive,
+  // which makes preventDefault() a silent no-op on iOS. Attaching directly
+  // with { passive: false } is the only reliable way to capture Apple
+  // Pencil and finger input on iPad without the browser hijacking it.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const getPoint = (clientX: number, clientY: number): Point => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      return {
+        x: (clientX - rect.left) * dpr,
+        y: (clientY - rect.top) * dpr,
+      };
     };
-  };
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    try {
-      canvasRef.current?.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore — some browsers throw if the pointer can't be captured
-    }
-    const dpr = window.devicePixelRatio || 1;
-    drawingRef.current = {
-      points: [getCanvasPointFromClient(e.clientX, e.clientY)],
-      size: brushSizeRef.current * dpr,
-      color: brushColorRef.current,
-    };
-    redraw();
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-
-    // Use coalesced events when available (iPad ProMotion / Apple Pencil
-    // can fire 240Hz; without this we drop intermediate samples).
-    const coalesced =
-      typeof e.nativeEvent.getCoalescedEvents === 'function'
-        ? e.nativeEvent.getCoalescedEvents()
-        : null;
-
-    if (coalesced && coalesced.length > 0) {
-      for (const ce of coalesced) {
-        drawingRef.current.points.push(getCanvasPointFromClient(ce.clientX, ce.clientY));
+    const onPointerDown = (e: PointerEvent) => {
+      e.preventDefault();
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // setPointerCapture can throw on some Safari versions; ignore.
       }
-    } else {
-      drawingRef.current.points.push(getCanvasPointFromClient(e.clientX, e.clientY));
-    }
-    redraw();
-  };
+      const dpr = window.devicePixelRatio || 1;
+      drawingRef.current = {
+        points: [getPoint(e.clientX, e.clientY)],
+        size: brushSizeRef.current * dpr,
+        color: brushColorRef.current,
+      };
+      redraw();
+    };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-    try {
-      canvasRef.current?.releasePointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
-    if (drawingRef.current.points.length > 0) {
-      strokesRef.current.push(drawingRef.current);
-      redoStackRef.current = [];
-    }
-    drawingRef.current = null;
-    redraw();
-    notifyState();
-  };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!drawingRef.current) return;
+      e.preventDefault();
+
+      const coalesced =
+        typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : null;
+
+      if (coalesced && coalesced.length > 0) {
+        for (const ce of coalesced) {
+          drawingRef.current.points.push(getPoint(ce.clientX, ce.clientY));
+        }
+      } else {
+        drawingRef.current.points.push(getPoint(e.clientX, e.clientY));
+      }
+      redraw();
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!drawingRef.current) return;
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      if (drawingRef.current.points.length > 0) {
+        strokesRef.current.push(drawingRef.current);
+        redoStackRef.current = [];
+      }
+      drawingRef.current = null;
+      redraw();
+      notifyState();
+    };
+
+    // Pinch-zoom uses iOS-only gesture events that ignore touch-action: none.
+    // Cancel these explicitly. We deliberately do NOT cancel touchstart/move/end
+    // on iOS — pointer events are synthesized from those, and preventDefault'ing
+    // them suppresses the pointer events we depend on.
+    const blockGesture = (e: Event) => e.preventDefault();
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    canvas.addEventListener('gesturestart', blockGesture);
+    canvas.addEventListener('gesturechange', blockGesture);
+    canvas.addEventListener('gestureend', blockGesture);
+
+    return () => {
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerUp);
+      canvas.removeEventListener('gesturestart', blockGesture);
+      canvas.removeEventListener('gesturechange', blockGesture);
+      canvas.removeEventListener('gestureend', blockGesture);
+    };
+  }, []);
 
   return (
     <div ref={wrapperRef} className="w-full h-full bg-white touch-none overflow-hidden">
       <canvas
         ref={canvasRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
         onContextMenu={(e) => e.preventDefault()}
         className="block w-full h-full cursor-crosshair touch-none select-none"
         style={{ touchAction: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
