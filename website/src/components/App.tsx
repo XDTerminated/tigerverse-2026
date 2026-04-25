@@ -40,6 +40,11 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [previewDataUri, setPreviewDataUri] = useState<string | null>(null);
   const [transparentDataUri, setTransparentDataUri] = useState<string | null>(null);
+  const [characteristics, setCharacteristics] = useState('');
+  const [voiceState, setVoiceState] = useState<'idle' | 'sending' | 'done' | 'error'>(
+    'idle',
+  );
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const canvasRef = useRef<DrawingCanvasHandle>(null);
 
   const handleFinish = () => {
@@ -491,9 +496,11 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim()) {
+                // Enter just dismisses the keyboard. Modal stays open until
+                // the user explicitly taps "bring my doodle to life".
+                if (e.key === 'Enter') {
                   e.preventDefault();
-                  void handleSubmit();
+                  (e.target as HTMLInputElement).blur();
                 }
               }}
               placeholder="name your doodle"
