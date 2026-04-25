@@ -161,44 +161,27 @@ export default function App() {
     <>
       {phase.kind === 'drawing' && (
         <div className="fixed inset-0 flex flex-col bg-white text-black">
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 relative">
             <DrawingCanvas
               ref={canvasRef}
               brushSize={brushSize}
               brushColor={brushColor}
               onStateChange={setCanvasState}
             />
+
+            {canvasState.canUndo && (
+              <button
+                onClick={handleFinish}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 h-12 px-6 bg-black text-white text-xl rounded-sm hover:bg-neutral-800 active:scale-95 transition-all duration-100 flex items-center gap-2 shadow-lg"
+              >
+                <Icon name="tick" className="w-6 h-6" />
+                finish
+              </button>
+            )}
           </div>
 
           <div className="shrink-0 h-20 px-5 flex items-center gap-3 border-t-2 border-black bg-white">
-            <button
-              onClick={() => canvasRef.current?.undo()}
-              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
-              aria-label="Undo"
-              title="Undo"
-            >
-              <Icon name="backward" className="w-7 h-7" />
-            </button>
-            <button
-              onClick={() => canvasRef.current?.redo()}
-              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
-              aria-label="Redo"
-              title="Redo"
-            >
-              <Icon name="forward" className="w-7 h-7" />
-            </button>
-            <button
-              onClick={() => {
-                if (canvasState.canUndo) setShowClearConfirm(true);
-              }}
-              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
-              aria-label="Clear"
-              title="Clear"
-            >
-              <Icon name="delete" className="w-7 h-7" />
-            </button>
-
-            <div className="flex items-center gap-2 pl-2 h-12">
+            <div className="flex items-center gap-2 h-12">
               {COLORS.map((c) => (
                 <button
                   key={c.value}
@@ -247,15 +230,32 @@ export default function App() {
 
             <div className="flex-1" />
 
-            {canvasState.canUndo && (
-              <button
-                onClick={handleFinish}
-                className="h-12 px-6 bg-black text-white text-xl rounded-sm hover:bg-neutral-800 active:scale-95 transition-all duration-100 flex items-center gap-2"
-              >
-                <Icon name="tick" className="w-6 h-6" />
-                finish
-              </button>
-            )}
+            <button
+              onClick={() => canvasRef.current?.undo()}
+              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
+              aria-label="Undo"
+              title="Undo"
+            >
+              <Icon name="backward" className="w-7 h-7" />
+            </button>
+            <button
+              onClick={() => canvasRef.current?.redo()}
+              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
+              aria-label="Redo"
+              title="Redo"
+            >
+              <Icon name="forward" className="w-7 h-7" />
+            </button>
+            <button
+              onClick={() => {
+                if (canvasState.canUndo) setShowClearConfirm(true);
+              }}
+              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
+              aria-label="Clear"
+              title="Clear"
+            >
+              <Icon name="delete" className="w-7 h-7" />
+            </button>
           </div>
         </div>
       )}
