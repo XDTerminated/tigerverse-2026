@@ -1,0 +1,33 @@
+{
+  "code": "MOCK",
+  "p1": {
+    "status": "ready",
+    "name": "Sparkjaw",
+    "imageUrl": "https://example.com/mock/sparkjaw.png",
+    "glbUrl": "https://example.com/mock/sparkjaw.glb",
+    "cryUrl": "https://example.com/mock/sparkjaw.mp3",
+    "stats": {
+      "hp": 110,
+      "attackMult": 1.05,
+      "speed": 1.2,
+      "element": "electric",
+      "moves": ["Thunderbolt", "Iceshard", "Healingaura"],
+      "flavorText": "Crackles with stored static; bites first, growls later."
+    }
+  },
+  "p2": {
+    "status": "ready",
+    "name": "Emberwing",
+    "imageUrl": "https://example.com/mock/emberwing.png",
+    "glbUrl": "https://example.com/mock/emberwing.glb",
+    "cryUrl": "https://example.com/mock/emberwing.mp3",
+    "stats": {
+      "hp": 120,
+      "attackMult": 1.0,
+      "speed": 1.0,
+      "element": "fire",
+      "moves": ["Fireball", "Watergun", "Taunt"],
+      "flavorText": "Lazy, smug, and warm to the touch — until provoked."
+    }
+  }
+}
