@@ -8,7 +8,8 @@ interface IconProps {
     | 'magic-wand'
     | 'download'
     | 'cross'
-    | 'sync';
+    | 'sync'
+    | 'eraser';
   className?: string;
   spin?: boolean;
 }

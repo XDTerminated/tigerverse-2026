@@ -26,6 +26,7 @@ export default function App() {
   const [name, setName] = useState('');
   const [brushSize, setBrushSize] = useState(12);
   const [brushColor, setBrushColor] = useState(COLORS[0].value);
+  const [isErasing, setIsErasing] = useState(false);
   const [canvasState, setCanvasState] = useState<CanvasState>({
     canUndo: false,
     canRedo: false,
@@ -160,48 +161,49 @@ export default function App() {
   return (
     <>
       {phase.kind === 'drawing' && (
-        <div className="fixed inset-0 flex flex-col bg-white text-black">
-          <div className="flex-1 min-h-0 relative">
-            <DrawingCanvas
-              ref={canvasRef}
-              brushSize={brushSize}
-              brushColor={brushColor}
-              onStateChange={setCanvasState}
-            />
-
-            {canvasState.canUndo && (
+        <div className="fixed inset-0 flex flex-row bg-white text-black">
+          {/* Left sidebar */}
+          <div className="shrink-0 w-40 flex flex-col items-center gap-4 py-5 border-r-2 border-black">
+            {COLORS.map((c) => (
               <button
-                onClick={handleFinish}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 h-12 px-6 bg-black text-white text-xl rounded-sm hover:bg-neutral-800 active:scale-95 transition-all duration-100 flex items-center gap-2 shadow-lg"
+                key={c.value}
+                onClick={() => {
+                  setBrushColor(c.value);
+                  setIsErasing(false);
+                }}
+                aria-label={c.name}
+                title={c.name}
+                className={`relative w-11 h-11 rounded-full border-2 border-black active:scale-90 transition-all duration-100 ${
+                  brushColor === c.value && !isErasing
+                    ? 'ring-2 ring-black ring-offset-2 scale-110'
+                    : 'hover:scale-105'
+                }`}
+                style={{ backgroundColor: c.value }}
               >
-                <Icon name="tick" className="w-6 h-6" />
-                finish
+                {isErasing && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-0.75 bg-black rotate-45 origin-center"
+                  />
+                )}
               </button>
-            )}
-          </div>
+            ))}
 
-          <div className="shrink-0 h-20 px-5 flex items-center gap-3 border-t-2 border-black bg-white">
-            <div className="flex items-center gap-2 h-12">
-              {COLORS.map((c) => (
-                <button
-                  key={c.value}
-                  onClick={() => setBrushColor(c.value)}
-                  aria-label={c.name}
-                  title={c.name}
-                  className={`w-9 h-9 rounded-full border-2 border-black active:scale-90 transition-all duration-100 ${
-                    brushColor === c.value
-                      ? 'ring-2 ring-black ring-offset-2 scale-110'
-                      : 'hover:scale-105'
-                  }`}
-                  style={{ backgroundColor: c.value }}
-                />
-              ))}
-            </div>
+            <button
+              onClick={() => setIsErasing((v) => !v)}
+              aria-label="Eraser"
+              title="Eraser"
+              className={`w-11 h-11 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-90 transition-all duration-100 ${
+                isErasing ? 'ring-2 ring-black ring-offset-2 scale-110 bg-black text-white' : ''
+              }`}
+            >
+              <Icon name="eraser" className="w-6 h-6" />
+            </button>
 
-            <label className="flex items-center gap-3 pl-3 h-12">
+            <div className="w-full px-3 mt-2 flex flex-col items-center gap-2">
               <Icon name="pencil" className="w-6 h-6" />
-              <div className="relative w-32 sm:w-48 pt-5">
-                <div className="absolute top-0 left-0 right-0 h-3 pointer-events-none text-base leading-none">
+              <div className="relative w-full pt-5">
+                <div className="absolute top-0 left-0 right-0 h-3 pointer-events-none text-sm leading-none">
                   {[1, 12, 24, 36, 48].map((v) => {
                     const ratio = (v - 1) / 47;
                     return (
@@ -225,37 +227,59 @@ export default function App() {
                   aria-label="Brush size"
                 />
               </div>
-              <span className="text-2xl w-10 text-right leading-none">{brushSize}</span>
-            </label>
+              <span className="text-2xl leading-none">{brushSize}</span>
+            </div>
+          </div>
 
-            <div className="flex-1" />
+          {/* Main column: canvas + bottom bar */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 min-h-0 relative">
+              <DrawingCanvas
+                ref={canvasRef}
+                brushSize={brushSize}
+                brushColor={isErasing ? '#ffffff' : brushColor}
+                onStateChange={setCanvasState}
+              />
 
-            <button
-              onClick={() => canvasRef.current?.undo()}
-              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
-              aria-label="Undo"
-              title="Undo"
-            >
-              <Icon name="backward" className="w-7 h-7" />
-            </button>
-            <button
-              onClick={() => canvasRef.current?.redo()}
-              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
-              aria-label="Redo"
-              title="Redo"
-            >
-              <Icon name="forward" className="w-7 h-7" />
-            </button>
-            <button
-              onClick={() => {
-                if (canvasState.canUndo) setShowClearConfirm(true);
-              }}
-              className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
-              aria-label="Clear"
-              title="Clear"
-            >
-              <Icon name="delete" className="w-7 h-7" />
-            </button>
+              {canvasState.canUndo && (
+                <button
+                  onClick={handleFinish}
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 h-12 px-6 bg-black text-white text-xl rounded-sm hover:bg-neutral-800 active:scale-95 transition-all duration-100 flex items-center gap-2 shadow-lg"
+                >
+                  <Icon name="tick" className="w-6 h-6" />
+                  finish
+                </button>
+              )}
+            </div>
+
+            <div className="shrink-0 h-20 px-5 flex items-center gap-3 border-t-2 border-black bg-white justify-end">
+              <button
+                onClick={() => canvasRef.current?.undo()}
+                className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
+                aria-label="Undo"
+                title="Undo"
+              >
+                <Icon name="backward" className="w-7 h-7" />
+              </button>
+              <button
+                onClick={() => canvasRef.current?.redo()}
+                className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
+                aria-label="Redo"
+                title="Redo"
+              >
+                <Icon name="forward" className="w-7 h-7" />
+              </button>
+              <button
+                onClick={() => {
+                  if (canvasState.canUndo) setShowClearConfirm(true);
+                }}
+                className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
+                aria-label="Clear"
+                title="Clear"
+              >
+                <Icon name="delete" className="w-7 h-7" />
+              </button>
+            </div>
           </div>
         </div>
       )}
