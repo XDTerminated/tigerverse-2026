@@ -42,8 +42,6 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
   const brushSizeRef = useRef(brushSize);
   const brushColorRef = useRef(brushColor);
   const onStateChangeRef = useRef(onStateChange);
-  const activePointerIdRef = useRef<number | null>(null);
-  const activePointerTypeRef = useRef<string | null>(null);
 
   useEffect(() => {
     brushSizeRef.current = brushSize;
@@ -171,32 +169,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-
-    // Palm rejection: if a pen stroke is in progress, ignore touch fingers.
-    if (
-      drawingRef.current &&
-      activePointerTypeRef.current === 'pen' &&
-      e.pointerType === 'touch'
-    ) {
-      return;
+    try {
+      canvasRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore — some browsers throw if the pointer can't be captured
     }
-
-    // Otherwise: pen takes over from touch (user picked up the pencil mid-stroke).
-    if (
-      drawingRef.current &&
-      e.pointerType === 'pen' &&
-      activePointerTypeRef.current !== 'pen'
-    ) {
-      drawingRef.current = null;
-    } else if (drawingRef.current) {
-      // Already drawing with a same-priority pointer — ignore the new one.
-      return;
-    }
-
-    canvasRef.current?.setPointerCapture(e.pointerId);
-    activePointerIdRef.current = e.pointerId;
-    activePointerTypeRef.current = e.pointerType;
-
     const dpr = window.devicePixelRatio || 1;
     drawingRef.current = {
       points: [getCanvasPointFromClient(e.clientX, e.clientY)],
@@ -208,11 +185,9 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
-    if (e.pointerId !== activePointerIdRef.current) return;
 
     // Use coalesced events when available (iPad ProMotion / Apple Pencil
-    // can fire 240Hz; without this we drop intermediate samples and get
-    // jaggy lines).
+    // can fire 240Hz; without this we drop intermediate samples).
     const coalesced =
       typeof e.nativeEvent.getCoalescedEvents === 'function'
         ? e.nativeEvent.getCoalescedEvents()
@@ -230,16 +205,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
-    if (e.pointerId !== activePointerIdRef.current) return;
-
-    canvasRef.current?.releasePointerCapture(e.pointerId);
+    try {
+      canvasRef.current?.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
     if (drawingRef.current.points.length > 0) {
       strokesRef.current.push(drawingRef.current);
       redoStackRef.current = [];
     }
     drawingRef.current = null;
-    activePointerIdRef.current = null;
-    activePointerTypeRef.current = null;
     redraw();
     notifyState();
   };

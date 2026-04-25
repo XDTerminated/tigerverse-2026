@@ -2,9 +2,14 @@
 dist/
 # generated types
 .astro/
+# vercel adapter output
+.vercel/
 
 # dependencies
 node_modules/
+
+# editor
+.vscode/
 
 # logs
 npm-debug.log*
