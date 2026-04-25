@@ -9,6 +9,24 @@ const COLORS = [
   { name: 'green', value: '#16A34A' },
 ];
 
+// Curated personality traits the player can multi-select while their model
+// generates. Joined into a single phrase and sent to /api/voice, which feeds
+// it to the ElevenLabs prompt to shape the creature's cry.
+const CHARACTERISTICS = [
+  'ferocious',
+  'cute',
+  'friendly',
+  'scary',
+  'playful',
+  'mysterious',
+  'deep voice',
+  'high-pitched',
+  'raspy',
+  'booming',
+  'squeaky',
+  'ancient',
+];
+
 type Phase =
   | { kind: 'drawing' }
   | {
@@ -40,7 +58,7 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [previewDataUri, setPreviewDataUri] = useState<string | null>(null);
   const [transparentDataUri, setTransparentDataUri] = useState<string | null>(null);
-  const [characteristics, setCharacteristics] = useState('');
+  const [selectedTraits, setSelectedTraits] = useState<string[]>([]);
   const [voiceState, setVoiceState] = useState<'idle' | 'sending' | 'done' | 'error'>(
     'idle',
   );
@@ -224,7 +242,51 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
   const reset = () => {
     canvasRef.current?.clear();
     setName('');
+    setSelectedTraits([]);
+    setVoiceState('idle');
+    setVoiceError(null);
     setPhase({ kind: 'drawing' });
+  };
+
+  const toggleTrait = (trait: string) => {
+    setSelectedTraits((prev) =>
+      prev.includes(trait) ? prev.filter((t) => t !== trait) : [...prev, trait],
+    );
+  };
+
+  const submitCharacteristics = async () => {
+    if (
+      selectedTraits.length === 0 ||
+      phase.kind !== 'generating' ||
+      voiceState === 'sending'
+    ) {
+      return;
+    }
+    const characteristics = selectedTraits.join(', ');
+    setVoiceState('sending');
+    setVoiceError(null);
+    try {
+      const res = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: phase.name,
+          characteristics,
+          sessionCode,
+          playerSlot,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVoiceState('error');
+        setVoiceError(data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setVoiceState('done');
+    } catch (err) {
+      setVoiceState('error');
+      setVoiceError((err as Error).message);
+    }
   };
 
   return (
@@ -400,6 +462,73 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
                 />
               </div>
               <div className="text-sm opacity-60">this usually takes 1–3 minutes</div>
+
+              {/* Voice customization — selected traits get joined and sent to
+                  /api/voice, which feeds them to ElevenLabs to shape the cry
+                  the Quest plays when the creature spawns. Optional; if
+                  skipped, the auto-derived cry from /api/generate stays. */}
+              <div className="w-full border-2 border-black rounded-sm p-5 flex flex-col gap-3 mt-2">
+                <div className="text-xl">what's {phase.name} like?</div>
+                <div className="text-sm opacity-60">
+                  pick a few traits and we'll give it a matching voice
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {CHARACTERISTICS.map((trait) => {
+                    const selected = selectedTraits.includes(trait);
+                    const locked = voiceState === 'sending' || voiceState === 'done';
+                    return (
+                      <button
+                        key={trait}
+                        onClick={() => toggleTrait(trait)}
+                        disabled={locked}
+                        className={`h-10 px-4 border-2 border-black rounded-sm text-base active:scale-95 transition-all duration-100 disabled:cursor-not-allowed ${
+                          selected
+                            ? 'bg-black text-white'
+                            : 'bg-white hover:bg-black hover:text-white'
+                        } ${locked ? 'opacity-50' : ''}`}
+                      >
+                        {trait}
+                      </button>
+                    );
+                  })}
+                </div>
+                {voiceState === 'idle' && (
+                  <button
+                    onClick={submitCharacteristics}
+                    disabled={selectedTraits.length === 0}
+                    className="h-12 px-5 bg-black text-white rounded-sm hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all duration-100 flex items-center justify-center gap-2 text-lg"
+                  >
+                    <Icon name="magic-wand" className="w-6 h-6" />
+                    give it a voice
+                  </button>
+                )}
+                {voiceState === 'sending' && (
+                  <div className="flex items-center gap-2 text-base">
+                    <Icon name="sync" spin className="w-5 h-5" />
+                    generating voice…
+                  </div>
+                )}
+                {voiceState === 'done' && (
+                  <div className="flex items-center gap-2 text-base">
+                    <Icon name="tick" className="w-5 h-5" />
+                    voice ready
+                  </div>
+                )}
+                {voiceState === 'error' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-sm opacity-80">
+                      voice failed: {voiceError ?? 'unknown error'}
+                    </div>
+                    <button
+                      onClick={submitCharacteristics}
+                      disabled={selectedTraits.length === 0}
+                      className="h-10 px-4 border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100 text-base"
+                    >
+                      try again
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

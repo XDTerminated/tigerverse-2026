@@ -11,6 +11,9 @@ export default defineConfig({
   integrations: [react()],
   vite: {
     plugins: [tailwindcss()],
+    // sharp is a native Node module used by lib/imagePreprocess; it must
+    // load at runtime instead of being bundled into the SSR output.
+    ssr: { external: ['sharp'] },
   },
   env: {
     schema: {
