@@ -414,7 +414,7 @@ export default function App() {
           >
             <div className="text-3xl mb-3">hold up</div>
             <div className="text-lg mb-6 opacity-80">
-              are u sure u wanna delete your creation?
+              are u sure u wanna delete your doodle?
             </div>
             <div className="flex gap-3 justify-end items-center">
               <button
