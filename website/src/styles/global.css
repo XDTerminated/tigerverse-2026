@@ -36,25 +36,41 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Chunky brush slider for iPad touch */
-input[type='range'] {
+/* Chunky brush slider — true native vertical via writing-mode.
+   Avoids rotation hacks; the browser positions the thumb directly. */
+.brush-slider-wrap {
+  width: 32px;
+  height: 12rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brush-slider-wrap input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
   cursor: pointer;
-  height: 30px;
+  /* vertical-lr + direction:rtl ⇒ value=min at BOTTOM, value=max at TOP. */
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 32px;
+  height: 12rem;
+  margin: 0;
+  padding: 0;
 }
-input[type='range']::-webkit-slider-runnable-track {
-  height: 4px;
+.brush-slider-wrap input[type='range']::-webkit-slider-runnable-track {
+  width: 4px;
+  height: 100%;
   background: #000;
   border-radius: 2px;
 }
-input[type='range']::-moz-range-track {
-  height: 4px;
+.brush-slider-wrap input[type='range']::-moz-range-track {
+  width: 4px;
+  height: 100%;
   background: #000;
   border-radius: 2px;
 }
-input[type='range']::-webkit-slider-thumb {
+.brush-slider-wrap input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 28px;
@@ -63,10 +79,10 @@ input[type='range']::-webkit-slider-thumb {
   border: 2px solid #fff;
   border-radius: 50%;
   cursor: pointer;
-  margin-top: -12px;
+  margin-left: -12px;
   box-shadow: 0 0 0 2px #000;
 }
-input[type='range']::-moz-range-thumb {
+.brush-slider-wrap input[type='range']::-moz-range-thumb {
   width: 28px;
   height: 28px;
   background: #000;

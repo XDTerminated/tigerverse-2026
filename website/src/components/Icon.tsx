@@ -2,6 +2,8 @@ interface IconProps {
   name:
     | 'backward'
     | 'forward'
+    | 'arrow-left'
+    | 'arrow-right'
     | 'delete'
     | 'pencil'
     | 'tick'

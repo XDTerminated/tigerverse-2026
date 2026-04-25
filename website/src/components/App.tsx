@@ -30,6 +30,7 @@ export default function App() {
   const [canvasState, setCanvasState] = useState<CanvasState>({
     canUndo: false,
     canRedo: false,
+    hasInk: false,
   });
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [previewDataUri, setPreviewDataUri] = useState<string | null>(null);
@@ -56,25 +57,78 @@ export default function App() {
     const img = new window.Image();
     img.onload = () => {
       if (cancelled) return;
-      const c = document.createElement('canvas');
-      c.width = img.width;
-      c.height = img.height;
-      const ctx = c.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0);
-      const data = ctx.getImageData(0, 0, c.width, c.height);
+
+      // Step 1: render source to a working canvas so we can read pixels.
+      const work = document.createElement('canvas');
+      work.width = img.width;
+      work.height = img.height;
+      const wctx = work.getContext('2d');
+      if (!wctx) return;
+      wctx.drawImage(img, 0, 0);
+      const sourceData = wctx.getImageData(0, 0, work.width, work.height);
+      const sp = sourceData.data;
+
+      // Step 2: find the bounding box of non-white ink so we can trim the
+      // surrounding margin from the 3D preview. Pixels with any channel
+      // significantly below 255 count as ink.
+      const W = work.width;
+      const H = work.height;
+      let minX = W;
+      let minY = H;
+      let maxX = -1;
+      let maxY = -1;
+      const INK_THRESHOLD = 240;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (sp[i] < INK_THRESHOLD || sp[i + 1] < INK_THRESHOLD || sp[i + 2] < INK_THRESHOLD) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      // Empty canvas — nothing to show.
+      if (maxX < 0 || maxY < 0) {
+        setTransparentDataUri(null);
+        return;
+      }
+
+      // Step 3: pad slightly so strokes don't sit flush against the edges.
+      const pad = Math.round(Math.max(W, H) * 0.02);
+      minX = Math.max(0, minX - pad);
+      minY = Math.max(0, minY - pad);
+      maxX = Math.min(W - 1, maxX + pad);
+      maxY = Math.min(H - 1, maxY + pad);
+
+      const cropW = maxX - minX + 1;
+      const cropH = maxY - minY + 1;
+
+      // Step 4: copy the cropped region into a square canvas, centered with
+      // letterbox so the rotation in the 3D preview spins around the doodle's
+      // visual center. Square also matches what Meshy expects.
+      const SIZE = Math.max(cropW, cropH);
+      const out = document.createElement('canvas');
+      out.width = SIZE;
+      out.height = SIZE;
+      const octx = out.getContext('2d');
+      if (!octx) return;
+      octx.fillStyle = '#ffffff';
+      octx.fillRect(0, 0, SIZE, SIZE);
+      const dx = Math.round((SIZE - cropW) / 2);
+      const dy = Math.round((SIZE - cropH) / 2);
+      octx.drawImage(work, minX, minY, cropW, cropH, dx, dy, cropW, cropH);
+
+      // Step 5: convert white → transparent, preserving stroke color.
+      const data = octx.getImageData(0, 0, SIZE, SIZE);
       const px = data.data;
       for (let i = 0; i < px.length; i += 4) {
-        const r = px[i];
-        const g = px[i + 1];
-        const b = px[i + 2];
-        // Alpha = how far this pixel is from white (max channel deviation).
-        // Pure white => alpha 0 (transparent). Saturated colors => alpha 255.
-        // Anti-aliased edges blend smoothly. RGB values stay so colors render.
-        px[i + 3] = Math.max(255 - r, 255 - g, 255 - b);
+        px[i + 3] = Math.max(255 - px[i], 255 - px[i + 1], 255 - px[i + 2]);
       }
-      ctx.putImageData(data, 0, 0);
-      setTransparentDataUri(c.toDataURL('image/png'));
+      octx.putImageData(data, 0, 0);
+      setTransparentDataUri(out.toDataURL('image/png'));
     };
     img.src = previewDataUri;
     return () => {
@@ -162,104 +216,121 @@ export default function App() {
     <>
       {phase.kind === 'drawing' && (
         <div className="fixed inset-0 flex flex-row bg-white text-black">
-          {/* Left sidebar */}
-          <div className="shrink-0 w-40 flex flex-col items-center gap-4 py-5 border-r-2 border-black">
-            {COLORS.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => {
-                  setBrushColor(c.value);
-                  setIsErasing(false);
-                }}
-                aria-label={c.name}
-                title={c.name}
-                className={`relative w-11 h-11 rounded-full border-2 border-black active:scale-90 transition-all duration-100 ${
-                  brushColor === c.value && !isErasing
-                    ? 'ring-2 ring-black ring-offset-2 scale-110'
-                    : 'hover:scale-105'
-                }`}
-                style={{ backgroundColor: c.value }}
-              >
-                {isErasing && (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-0.75 bg-black rotate-45 origin-center"
-                  />
-                )}
-              </button>
-            ))}
+          {/* Left sidebar — same thickness as the bottom bar (80px) */}
+          <div className="shrink-0 w-20 flex flex-col items-center gap-3 py-4 border-r-2 border-black">
+            {/* Colors container — fixed height (4 swatches × 44px + 3 gaps × 12px = 212)
+                so the rest of the sidebar doesn't shift when colors slide away. */}
+            <div className="relative" style={{ width: 44, height: 212 }}>
+              {COLORS.map((c, i) => (
+                <button
+                  key={c.value}
+                  onClick={() => {
+                    setBrushColor(c.value);
+                    setIsErasing(false);
+                  }}
+                  aria-label={c.name}
+                  title={c.name}
+                  className={`absolute w-11 h-11 rounded-full border-2 border-black transition-all duration-300 ease-out ${
+                    brushColor === c.value && !isErasing
+                      ? 'ring-2 ring-black ring-offset-2 scale-110'
+                      : ''
+                  }`}
+                  style={{
+                    top: i * 56,
+                    backgroundColor: c.value,
+                    /* When erasing, every swatch slides down to land at the
+                       pencil button's position. Pencil's bg-white + higher
+                       z-index masks them as they tuck in. */
+                    transform: isErasing ? `translateY(${(4 - i) * 56}px)` : 'translateY(0)',
+                    pointerEvents: isErasing ? 'none' : 'auto',
+                  }}
+                />
+              ))}
+            </div>
 
             <button
-              onClick={() => setIsErasing((v) => !v)}
+              onClick={() => setIsErasing(false)}
+              aria-label="Pencil"
+              title="Pencil"
+              className={`relative z-10 w-11 h-11 flex items-center justify-center border-2 border-black rounded-sm active:scale-90 transition-all duration-100 ${
+                !isErasing
+                  ? 'ring-2 ring-black ring-offset-2 scale-110 bg-black text-white'
+                  : 'bg-white hover:bg-black hover:text-white'
+              }`}
+            >
+              <Icon name="pencil" className="w-6 h-6" />
+            </button>
+            <button
+              onClick={() => setIsErasing(true)}
               aria-label="Eraser"
               title="Eraser"
-              className={`w-11 h-11 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-90 transition-all duration-100 ${
-                isErasing ? 'ring-2 ring-black ring-offset-2 scale-110 bg-black text-white' : ''
+              className={`w-11 h-11 flex items-center justify-center border-2 border-black rounded-sm active:scale-90 transition-all duration-100 ${
+                isErasing
+                  ? 'ring-2 ring-black ring-offset-2 scale-110 bg-black text-white'
+                  : 'hover:bg-black hover:text-white'
               }`}
             >
               <Icon name="eraser" className="w-6 h-6" />
             </button>
 
-            <div className="w-full px-3 mt-2 flex flex-col items-center gap-2">
-              <Icon name="pencil" className="w-6 h-6" />
-              <div className="relative w-full pt-5">
-                <div className="absolute top-0 left-0 right-0 h-3 pointer-events-none text-sm leading-none">
-                  {[1, 12, 24, 36, 48].map((v) => {
-                    const ratio = (v - 1) / 47;
-                    return (
-                      <span
-                        key={v}
-                        className="absolute top-0 -translate-x-1/2"
-                        style={{ left: `calc(14px + (100% - 28px) * ${ratio})` }}
-                      >
-                        {v}
-                      </span>
-                    );
-                  })}
-                </div>
+            <div className="relative mt-2 h-48 w-full">
+              <div className="brush-slider-wrap absolute top-0" style={{ left: '0.75rem' }}>
                 <input
                   type="range"
                   min={1}
                   max={48}
                   value={brushSize}
                   onChange={(e) => setBrushSize(Number(e.target.value))}
-                  className="w-full accent-black block"
+                  className="accent-black"
                   aria-label="Brush size"
                 />
               </div>
-              <span className="text-2xl leading-none">{brushSize}</span>
+              {/* Tick numbers — anchored just to the right of the slider wrapper
+                  (slider wrapper is 32px wide, sits at left:0.75rem, so ticks
+                  start at left:0.75rem + 32px + 4px gap). Heights match
+                  exactly so the calc resolves to the same pixel positions as
+                  the thumb. ratio=0 → bottom, ratio=1 → top. */}
+              <div
+                className="absolute top-0 h-48 pointer-events-none text-sm leading-none"
+                style={{ left: 'calc(0.75rem + 32px + 4px)' }}
+              >
+                {[1, 12, 24, 36, 48].map((v) => {
+                  const ratio = (v - 1) / 47;
+                  return (
+                    <span
+                      key={v}
+                      className="absolute -translate-y-1/2"
+                      style={{ top: `calc(14px + (12rem - 28px) * ${1 - ratio})` }}
+                    >
+                      {v}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
+
+            <span className="text-2xl leading-none">{brushSize}</span>
           </div>
 
           {/* Main column: canvas + bottom bar */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-1 min-h-0 relative">
+            <div className="flex-1 min-h-0">
               <DrawingCanvas
                 ref={canvasRef}
                 brushSize={brushSize}
                 brushColor={isErasing ? '#ffffff' : brushColor}
                 onStateChange={setCanvasState}
               />
-
-              {canvasState.canUndo && (
-                <button
-                  onClick={handleFinish}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 h-12 px-6 bg-black text-white text-xl rounded-sm hover:bg-neutral-800 active:scale-95 transition-all duration-100 flex items-center gap-2 shadow-lg"
-                >
-                  <Icon name="tick" className="w-6 h-6" />
-                  finish
-                </button>
-              )}
             </div>
 
-            <div className="shrink-0 h-20 px-5 flex items-center gap-3 border-t-2 border-black bg-white justify-end">
+            <div className="shrink-0 h-20 px-5 flex items-center gap-3 border-t-2 border-black bg-white">
               <button
                 onClick={() => canvasRef.current?.undo()}
                 className="h-12 w-12 flex items-center justify-center border-2 border-black rounded-sm hover:bg-black hover:text-white active:scale-95 transition-all duration-100"
                 aria-label="Undo"
                 title="Undo"
               >
-                <Icon name="backward" className="w-7 h-7" />
+                <Icon name="arrow-left" className="w-7 h-7" />
               </button>
               <button
                 onClick={() => canvasRef.current?.redo()}
@@ -267,7 +338,7 @@ export default function App() {
                 aria-label="Redo"
                 title="Redo"
               >
-                <Icon name="forward" className="w-7 h-7" />
+                <Icon name="arrow-right" className="w-7 h-7" />
               </button>
               <button
                 onClick={() => {
@@ -279,6 +350,18 @@ export default function App() {
               >
                 <Icon name="delete" className="w-7 h-7" />
               </button>
+
+              <div className="flex-1" />
+
+              {canvasState.hasInk && (
+                <button
+                  onClick={handleFinish}
+                  className="h-12 px-6 bg-black text-white text-xl rounded-sm hover:bg-neutral-800 active:scale-95 transition-all duration-100 flex items-center gap-2"
+                >
+                  <Icon name="tick" className="w-6 h-6" />
+                  finish
+                </button>
+              )}
             </div>
           </div>
         </div>

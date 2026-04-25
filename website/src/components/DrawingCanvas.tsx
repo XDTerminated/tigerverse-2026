@@ -4,11 +4,13 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
+  useState,
 } from 'react';
 
 export interface CanvasState {
   canUndo: boolean;
   canRedo: boolean;
+  hasInk: boolean;
 }
 
 export interface DrawingCanvasHandle {
@@ -42,6 +44,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
   const brushSizeRef = useRef(brushSize);
   const brushColorRef = useRef(brushColor);
   const onStateChangeRef = useRef(onStateChange);
+  const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     brushSizeRef.current = brushSize;
@@ -55,10 +58,32 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
     onStateChangeRef.current = onStateChange;
   }, [onStateChange]);
 
+  const checkHasInk = (): boolean => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return false;
+    // Downsample to a 64x64 buffer and check for any non-white pixel.
+    // Cheap enough to run after each stroke; correct under arbitrary erase
+    // sequences that might leave the canvas visually blank despite strokes
+    // still being in the array.
+    const SAMPLE = 64;
+    const off = document.createElement('canvas');
+    off.width = SAMPLE;
+    off.height = SAMPLE;
+    const ctx = off.getContext('2d');
+    if (!ctx) return false;
+    ctx.drawImage(canvas, 0, 0, SAMPLE, SAMPLE);
+    const data = ctx.getImageData(0, 0, SAMPLE, SAMPLE).data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 240 || data[i + 1] < 240 || data[i + 2] < 240) return true;
+    }
+    return false;
+  };
+
   const notifyState = () => {
     onStateChangeRef.current?.({
       canUndo: strokesRef.current.length > 0,
       canRedo: redoStackRef.current.length > 0,
+      hasInk: checkHasInk(),
     });
   };
 
@@ -191,6 +216,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
     };
 
     const onPointerMove = (e: PointerEvent) => {
+      // Track preview position in CSS pixels (relative to canvas) for the
+      // hover indicator. Updates whether or not we're mid-stroke.
+      const rect = canvas.getBoundingClientRect();
+      setPreviewPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+
       if (!drawingRef.current) return;
       e.preventDefault();
 
@@ -206,6 +236,8 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
       }
       redraw();
     };
+
+    const onPointerLeave = () => setPreviewPos(null);
 
     const onPointerUp = (e: PointerEvent) => {
       if (!drawingRef.current) return;
@@ -233,6 +265,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('pointercancel', onPointerUp);
+    canvas.addEventListener('pointerleave', onPointerLeave);
     canvas.addEventListener('gesturestart', blockGesture);
     canvas.addEventListener('gesturechange', blockGesture);
     canvas.addEventListener('gestureend', blockGesture);
@@ -242,20 +275,41 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', onPointerUp);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('gesturestart', blockGesture);
       canvas.removeEventListener('gesturechange', blockGesture);
       canvas.removeEventListener('gestureend', blockGesture);
     };
   }, []);
 
+  // Brush preview circle. brushColor is white when erasing (App passes
+  // '#ffffff' in that case) so we get a white-fill / black-outline indicator
+  // that reads as "eraser" without needing a separate flag here.
+  const isErasingPreview = brushColor === '#ffffff' || brushColor.toLowerCase() === '#fff';
+
   return (
-    <div ref={wrapperRef} className="w-full h-full bg-white touch-none overflow-hidden">
+    <div ref={wrapperRef} className="w-full h-full bg-white touch-none overflow-hidden relative">
       <canvas
         ref={canvasRef}
         onContextMenu={(e) => e.preventDefault()}
         className="block w-full h-full cursor-crosshair touch-none select-none"
         style={{ touchAction: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
       />
+      {previewPos && (
+        <div
+          aria-hidden="true"
+          className="absolute pointer-events-none rounded-full border-2 border-black"
+          style={{
+            left: previewPos.x - brushSize / 2,
+            top: previewPos.y - brushSize / 2,
+            width: brushSize,
+            height: brushSize,
+            backgroundColor: isErasingPreview
+              ? 'rgba(255,255,255,0.7)'
+              : `${brushColor}55`,
+          }}
+        />
+      )}
     </div>
   );
 });
