@@ -42,6 +42,8 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
   const brushSizeRef = useRef(brushSize);
   const brushColorRef = useRef(brushColor);
   const onStateChangeRef = useRef(onStateChange);
+  const activePointerIdRef = useRef<number | null>(null);
+  const activePointerTypeRef = useRef<string | null>(null);
 
   useEffect(() => {
     brushSizeRef.current = brushSize;
@@ -157,22 +159,47 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
     [],
   );
 
-  const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
+  const getCanvasPointFromClient = (clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     return {
-      x: (e.clientX - rect.left) * dpr,
-      y: (e.clientY - rect.top) * dpr,
+      x: (clientX - rect.left) * dpr,
+      y: (clientY - rect.top) * dpr,
     };
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+
+    // Palm rejection: if a pen stroke is in progress, ignore touch fingers.
+    if (
+      drawingRef.current &&
+      activePointerTypeRef.current === 'pen' &&
+      e.pointerType === 'touch'
+    ) {
+      return;
+    }
+
+    // Otherwise: pen takes over from touch (user picked up the pencil mid-stroke).
+    if (
+      drawingRef.current &&
+      e.pointerType === 'pen' &&
+      activePointerTypeRef.current !== 'pen'
+    ) {
+      drawingRef.current = null;
+    } else if (drawingRef.current) {
+      // Already drawing with a same-priority pointer — ignore the new one.
+      return;
+    }
+
     canvasRef.current?.setPointerCapture(e.pointerId);
+    activePointerIdRef.current = e.pointerId;
+    activePointerTypeRef.current = e.pointerType;
+
     const dpr = window.devicePixelRatio || 1;
     drawingRef.current = {
-      points: [getCanvasPoint(e)],
+      points: [getCanvasPointFromClient(e.clientX, e.clientY)],
       size: brushSizeRef.current * dpr,
       color: brushColorRef.current,
     };
@@ -181,18 +208,38 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
-    drawingRef.current.points.push(getCanvasPoint(e));
+    if (e.pointerId !== activePointerIdRef.current) return;
+
+    // Use coalesced events when available (iPad ProMotion / Apple Pencil
+    // can fire 240Hz; without this we drop intermediate samples and get
+    // jaggy lines).
+    const coalesced =
+      typeof e.nativeEvent.getCoalescedEvents === 'function'
+        ? e.nativeEvent.getCoalescedEvents()
+        : null;
+
+    if (coalesced && coalesced.length > 0) {
+      for (const ce of coalesced) {
+        drawingRef.current.points.push(getCanvasPointFromClient(ce.clientX, ce.clientY));
+      }
+    } else {
+      drawingRef.current.points.push(getCanvasPointFromClient(e.clientX, e.clientY));
+    }
     redraw();
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawingRef.current) return;
+    if (e.pointerId !== activePointerIdRef.current) return;
+
     canvasRef.current?.releasePointerCapture(e.pointerId);
     if (drawingRef.current.points.length > 0) {
       strokesRef.current.push(drawingRef.current);
       redoStackRef.current = [];
     }
     drawingRef.current = null;
+    activePointerIdRef.current = null;
+    activePointerTypeRef.current = null;
     redraw();
     notifyState();
   };
@@ -205,7 +252,9 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        className="block w-full h-full cursor-crosshair"
+        onContextMenu={(e) => e.preventDefault()}
+        className="block w-full h-full cursor-crosshair touch-none select-none"
+        style={{ touchAction: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
       />
     </div>
   );
