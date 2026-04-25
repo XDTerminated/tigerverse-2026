@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+
+@font-face {
+  font-family: 'Sophiecomic';
+  src: url('/fonts/sophiecomic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'Sophiecomic', system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Sophiecomic', system-ui, sans-serif;
+  background: #fff;
+  color: #000;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+button:not(:disabled),
+a[href],
+[role='button'] {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Chunky brush slider for iPad touch */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 30px;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #000;
+  border-radius: 2px;
+}
+input[type='range']::-moz-range-track {
+  height: 4px;
+  background: #000;
+  border-radius: 2px;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  background: #000;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -12px;
+  box-shadow: 0 0 0 2px #000;
+}
+input[type='range']::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  background: #000;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px #000;
+}
+
+/* 3D rotating doodle preview */
+@keyframes spin3d {
+  0% {
+    transform: rotateX(15deg) rotateY(0deg);
+  }
+  100% {
+    transform: rotateX(15deg) rotateY(360deg);
+  }
+}
+.animate-spin-3d {
+  animation: spin3d 6s linear infinite;
+}
