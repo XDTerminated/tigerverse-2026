@@ -20,10 +20,14 @@ namespace Tigerverse.Combat
                     audioSource = gameObject.AddComponent<AudioSource>();
             }
 
-            audioSource.spatialBlend = 1f;
+            // Cries are gameplay-essential — keep them mostly 2D so they're always audible
+            // through whatever speakers are wired up (laptop, headset, MPPM shared output).
+            // A small spatial bias just hints at left/right pan based on monster position.
+            audioSource.spatialBlend = 0.25f;
             audioSource.rolloffMode = AudioRolloffMode.Linear;
-            audioSource.minDistance = 0.5f;
-            audioSource.maxDistance = 5f;
+            audioSource.minDistance = 1f;
+            audioSource.maxDistance = 30f;
+            audioSource.volume = 1f;
             audioSource.playOnAwake = false;
 
             // If no AudioReverbZone in scene, apply slight reverb via mix.

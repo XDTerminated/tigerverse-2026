@@ -287,6 +287,8 @@ namespace Tigerverse.Core
             }
             else
             {
+                // No egg wired — still fire the spawn cry directly.
+                cryA?.PlaySpawn();
                 aDone = true;
             }
 
@@ -300,6 +302,7 @@ namespace Tigerverse.Core
             }
             else
             {
+                cryB?.PlaySpawn();
                 bDone = true;
             }
 
