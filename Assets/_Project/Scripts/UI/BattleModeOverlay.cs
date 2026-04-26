@@ -7,8 +7,8 @@ using UnityEngine.UI;
 namespace Tigerverse.UI
 {
     /// <summary>
-    /// Large center-of-vision banner that flashes "TRAINER MODE" or
-    /// "SCRIBBLE MODE" whenever the player toggles between them. Built
+    /// Large center-of-vision banner that flashes "SCRIBBLE MODE" or
+    /// "ARTIST MODE" whenever the player toggles between them. Built
     /// programmatically as a head-locked world-space canvas so it shows up
     /// front-and-center in XR without needing any scene wiring.
     /// </summary>
@@ -47,7 +47,7 @@ namespace Tigerverse.UI
         public void Show(BattleControlMode mode)
         {
             if (_label != null)
-                _label.text = mode == BattleControlMode.Trainer ? "TRAINER MODE" : "SCRIBBLE MODE";
+                _label.text = mode == BattleControlMode.Scribble ? "SCRIBBLE MODE" : "ARTIST MODE";
             if (_flashCo != null) StopCoroutine(_flashCo);
             _flashCo = StartCoroutine(Flash());
         }

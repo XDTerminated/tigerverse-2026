@@ -9,10 +9,11 @@ namespace Tigerverse.Combat
 {
     /// <summary>
     /// Owns the local player's <see cref="BattleControlMode"/> during the
-    /// battle phase. Press A on the right controller (or T in the editor) to
+    /// battle phase. Press A on the right controller (or M in the editor) to
     /// toggle. The trainer's locomotion is locked in BOTH modes — what
-    /// changes is whether the joystick steers the local scribble (Scribble
-    /// mode) and whether voice commands can fire attacks (Trainer mode).
+    /// changes is whether the joystick AIMS attacks from the local monster
+    /// (Scribble mode, the default) or TRANSLATES the local monster around
+    /// the arena (Artist mode).
     ///
     /// Created on demand by <c>GameStateManager</c> when the battle starts;
     /// torn down when the battle ends.
@@ -23,10 +24,10 @@ namespace Tigerverse.Combat
 
         public event Action<BattleControlMode> OnModeChanged;
 
-        public BattleControlMode CurrentMode { get; private set; } = BattleControlMode.Trainer;
+        public BattleControlMode CurrentMode { get; private set; } = BattleControlMode.Scribble;
 
-        /// <summary>True when voice commands are allowed to submit attacks.</summary>
-        public bool CanAttack => CurrentMode == BattleControlMode.Trainer;
+        /// <summary>True when voice commands are allowed to submit attacks (Scribble mode).</summary>
+        public bool CanAttack => CurrentMode == BattleControlMode.Scribble;
 
         // Refs supplied by GameStateManager when battle starts.
         private ContinuousMoveProvider _xrMoveProvider;
@@ -93,9 +94,9 @@ namespace Tigerverse.Combat
 
         public void Toggle()
         {
-            CurrentMode = CurrentMode == BattleControlMode.Trainer
-                ? BattleControlMode.Scribble
-                : BattleControlMode.Trainer;
+            CurrentMode = CurrentMode == BattleControlMode.Scribble
+                ? BattleControlMode.Artist
+                : BattleControlMode.Scribble;
             ApplyMode(announce: true);
         }
 
@@ -108,9 +109,11 @@ namespace Tigerverse.Combat
 
         private void ApplyMode(bool announce)
         {
-            // Scribble mover only listens to joystick in Scribble mode.
+            // Scribble-mover (joystick translates the monster) only listens
+            // in Artist mode. In Scribble mode the monster stays put while
+            // the joystick aims projectiles instead.
             if (_scribbleMover != null)
-                _scribbleMover.enabled = (CurrentMode == BattleControlMode.Scribble);
+                _scribbleMover.enabled = (CurrentMode == BattleControlMode.Artist);
 
             if (announce && _overlay != null) _overlay.Show(CurrentMode);
             OnModeChanged?.Invoke(CurrentMode);

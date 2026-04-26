@@ -83,7 +83,7 @@ namespace Tigerverse.UI
 
         private void HandleModeChanged(BattleControlMode mode)
         {
-            AppendLog($"{LocalPlayerName} → {(mode == BattleControlMode.Trainer ? "TRAINER" : "SCRIBBLE")}");
+            AppendLog($"{LocalPlayerName} → {(mode == BattleControlMode.Scribble ? "SCRIBBLE" : "ARTIST")}");
         }
 
         private void HandleMoveCast(Tigerverse.Combat.MoveSO move)

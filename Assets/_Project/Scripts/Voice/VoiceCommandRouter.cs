@@ -555,17 +555,36 @@ namespace Tigerverse.Voice
 
             if (bestMove != null && (bestSubstring || bestScore < matchThreshold))
             {
-                // Battle control mode gate: only the trainer issues moves.
-                // While the player is in Scribble mode (steering their
-                // monster around), voice commands are intentionally ignored.
+                // Battle control mode gate: only Scribble mode issues moves.
+                // While the player is in Artist mode (steering their monster
+                // around), voice commands are intentionally ignored.
                 var modeMgr = Tigerverse.Combat.BattleControlModeManager.Instance;
                 if (modeMgr != null && !modeMgr.CanAttack)
                 {
-                    Debug.Log($"[VoiceCommandRouter] Move '{bestMove.displayName}' ignored — switch to Trainer mode (press A) to attack.");
+                    Debug.Log($"[VoiceCommandRouter] Move '{bestMove.displayName}' ignored — switch to Scribble mode (press A) to attack.");
                     return;
                 }
-                if (battle != null) battle.SubmitMove(bestMove, casterIndex);
-                OnMoveCast?.Invoke(bestMove);
+
+                // Aim-and-cast path: if a MonsterAimController exists in the
+                // scene we route through it so the move spawns a projectile
+                // along the current aim direction (cooldown enforced there).
+                // The aim controller calls battle.SubmitMove on hit, so the
+                // existing damage / HP-sync / OnBattleEnd pipeline runs the
+                // same way it always has — just gated on a real collision.
+                var aim = Tigerverse.Combat.MonsterAimController.LocalInstance;
+                if (aim != null)
+                {
+                    aim.LaunchAttack(bestMove, casterIndex);
+                    OnMoveCast?.Invoke(bestMove);
+                }
+                else
+                {
+                    // Fallback for non-battle paths (tutorial / mock / pre-aim
+                    // scenes): preserve the original direct-submit behaviour
+                    // so voice still works there.
+                    if (battle != null) battle.SubmitMove(bestMove, casterIndex);
+                    OnMoveCast?.Invoke(bestMove);
+                }
             }
             else
             {

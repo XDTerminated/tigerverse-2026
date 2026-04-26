@@ -117,11 +117,10 @@ namespace Tigerverse.Combat
 
         private void ResolveMove(byte moveId, int casterIndex)
         {
-            // Wrong-turn guards (silent reject).
+            // Free-fire mode: either player can submit at any time. Caster-
+            // side cooldown lives on MonsterAimController to prevent voice
+            // spam. The only hard gate here is "battle is over" (Phase=End).
             if (Phase == BattlePhase.End) return;
-            if (casterIndex == 0 && Phase != BattlePhase.WaitingForP1Move) return;
-            if (casterIndex == 1 && Phase != BattlePhase.WaitingForP2Move) return;
-            if (casterIndex != CurrentTurn) return;
 
             if (catalog == null || catalog.moves == null || moveId >= catalog.moves.Length) return;
             var move = catalog.moves[moveId];

@@ -529,6 +529,16 @@ namespace Tigerverse.Core
             var hudGo = new GameObject("BattleHUD", typeof(RectTransform));
             var hud = hudGo.AddComponent<BattleHUD>();
             hud.Configure(mgr, voiceRouter);
+
+            // Aim-and-cast controller on the local monster. Reticle hovers
+            // in front in Scribble mode; voice-cast spawns a projectile
+            // toward the reticle. Cooldown enforced inside the controller.
+            GameObject opponentMonster = localCasterIndex == 0 ? monsterBGo : monsterAGo;
+            var aim = localScribble.GetComponent<Combat.MonsterAimController>();
+            if (aim == null) aim = localScribble.AddComponent<Combat.MonsterAimController>();
+            aim.opponent     = opponentMonster != null ? opponentMonster.transform : null;
+            aim.casterIndex  = localCasterIndex;
+            aim.battle       = battle;
         }
 
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)
