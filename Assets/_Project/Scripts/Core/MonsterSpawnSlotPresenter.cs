@@ -63,6 +63,20 @@ namespace Tigerverse.Core
                 apiClient = FindFirstObjectByType<SessionApiClient>();
             }
 
+            // Local-caster fast path: as soon as GameStateManager knows
+            // which slot belongs to this client, spawn the egg + tutorial
+            // button on that slot immediately — even if poll data hasn't
+            // arrived yet. Without this, a player whose local
+            // SessionApiClient hasn't received its first poll response
+            // sees nothing, while the other client (which polled first)
+            // already has both slots populated. The egg's name updates
+            // below once real PlayerData arrives.
+            if (_egg == null && IsLocalCaster())
+            {
+                var stub = new PlayerData { name = $"Player {slotIndex + 1}" };
+                SpawnEgg(stub);
+            }
+
             if (apiClient == null || apiClient.LastSession == null) return;
 
             PlayerData data = slotIndex == 0 ? apiClient.LastSession.p1 : apiClient.LastSession.p2;
