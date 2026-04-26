@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  IL2CPP managed-code stripping preservation list.
+
+  WHY THIS FILE EXISTS:
+    Newtonsoft.Json populates our session/player/stats fields via reflection.
+    Under IL2CPP with stripping ON (we use ManagedStrippingLevel.Low for
+    Quest builds — see TigerverseQuestBuild.cs), the stripper considers any
+    serialized field that is never *directly* set in C# code to be unused
+    and removes its setter. Result on device: JsonConvert.DeserializeObject
+    silently returns an object whose every field is null/default, which is
+    why the egg + tutorial never spawned in the APK even though the editor
+    worked perfectly. Editor uses Mono and never strips, hiding the bug.
+
+  WHAT WE PRESERVE:
+    - The whole Newtonsoft.Json assembly (ConverterAttributes, contract
+      resolvers, etc) so its reflection internals stay alive.
+    - Tigerverse.Net types and fields — SessionData, PlayerData,
+      MonsterStatsData and anything else our backend hands us as JSON.
+    - The whole game assembly's [Serializable] / public-field MonoBehaviour
+      surface for safety. Cheap on app size, removes a class of bugs.
+-->
+<linker>
+  <assembly fullname="Newtonsoft.Json" preserve="all" />
+  <assembly fullname="Assembly-CSharp">
+    <type fullname="Tigerverse.Net.SessionData"        preserve="all" />
+    <type fullname="Tigerverse.Net.PlayerData"         preserve="all" />
+    <type fullname="Tigerverse.Net.MonsterStatsData"   preserve="all" />
+    <namespace fullname="Tigerverse.Net"               preserve="all" />
+  </assembly>
+</linker>
