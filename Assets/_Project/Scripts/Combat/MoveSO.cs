@@ -26,6 +26,9 @@ namespace Tigerverse.Combat
         public float castDurationSec = 0.6f;
         public string animTrigger = "Attack";
 
+        [Tooltip("Seconds the caster must wait before this specific move can be used again. Tune higher for stronger moves so big hits aren't spammable.")]
+        public float cooldownSeconds = 3f;
+
         [Header("FX/SFX")]
         public GameObject vfxPrefab;
         public AudioClip castSfx;

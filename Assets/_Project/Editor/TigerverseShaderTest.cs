@@ -130,81 +130,25 @@ namespace Tigerverse.EditorTools
                     monster, "Player 2",
                     () =>
                     {
-                        Debug.Log("[Tigerverse/Dev] VS cutscene complete — wiring BattleControlMode + Aim.");
-                        WireDevBattleStack(monster);
+                        Debug.Log("[Tigerverse/Dev] VS cutscene complete — locking locomotion for dev battle.");
+                        LockLocomotionForDev();
                     }));
             };
         }
 
-        // Stand up the same battle infrastructure GameStateManager builds for
-        // a real two-player flow, but on a single dev-spawned monster: lock
-        // locomotion, build the mode-toggle manager, attach the aim
-        // controller (with the OPPOSITE MonsterSpawnPivot as a dummy target).
-        // No real BattleManager, so projectile hits will log but apply no
-        // damage — that's enough to verify the spawn / travel / reticle / cooldown.
-        private static void WireDevBattleStack(GameObject monster)
+        // Mirrors GameStateManager.SetupBattleLocomotionAndHud's locomotion
+        // lock so the dev-menu path lands the trainer in the same parked
+        // state the real battle does. No HUD spawned here — there's no
+        // BattleManager wired up in the dev path, so the moves panel would
+        // be empty anyway.
+        private static void LockLocomotionForDev()
         {
-            if (monster == null)
-            {
-                Debug.LogWarning("[Tigerverse/Dev] No monster to wire — skipping battle-stack setup.");
-                return;
-            }
-
-            // Tear down any prior dev-stack so re-running is idempotent.
-            if (Tigerverse.Combat.BattleControlModeManager.Instance != null)
-                Object.Destroy(Tigerverse.Combat.BattleControlModeManager.Instance.gameObject);
-            var oldOverlay = GameObject.Find("BattleModeOverlay");
-            if (oldOverlay != null) Object.Destroy(oldOverlay);
-
-            // Locomotion refs (so Configure can disable them).
             var origin = Object.FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
-            UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider xrMove = null;
-            Tigerverse.Core.FlatMoveController editorMove = null;
-            if (origin != null)
-            {
-                xrMove = origin.gameObject.GetComponentInChildren<UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider>(true);
-                editorMove = origin.GetComponent<Tigerverse.Core.FlatMoveController>();
-            }
-
-            // Joystick→monster mover (Artist mode), disabled until manager flips it on.
-            var mover = monster.GetComponent<Tigerverse.Combat.ScribbleMoveController>();
-            if (mover == null) mover = monster.AddComponent<Tigerverse.Combat.ScribbleMoveController>();
-            mover.target = monster.transform;
-            mover.xrOrigin = origin != null ? origin.transform : null;
-            mover.enabled = false;
-
-            var overlayGo = new GameObject("BattleModeOverlay", typeof(RectTransform));
-            var overlay = overlayGo.AddComponent<Tigerverse.UI.BattleModeOverlay>();
-
-            var mgrGo = new GameObject("BattleControlModeManager");
-            var mgr = mgrGo.AddComponent<Tigerverse.Combat.BattleControlModeManager>();
-            mgr.Configure(xrMove, editorMove, mover, overlay);
-
-            // Aim controller on the local monster. Opponent target = whichever
-            // MonsterSpawnPivot ISN'T this monster's, so projectiles can be
-            // aimed at "where the opponent would be" in dev. No real damage
-            // resolves (battle == null) — projectile just logs "HIT" and
-            // despawns.
-            Transform opp = FindOppositeSpawnPivot(monster.transform.position);
-            var aim = monster.GetComponent<Tigerverse.Combat.MonsterAimController>();
-            if (aim == null) aim = monster.AddComponent<Tigerverse.Combat.MonsterAimController>();
-            aim.opponent    = opp;
-            aim.casterIndex = 0;
-            aim.battle      = Object.FindFirstObjectByType<Tigerverse.Combat.BattleManager>();
-
-            Debug.Log($"[Tigerverse/Dev] Battle-stack wired. Mode={mgr.CurrentMode}. Press M (editor) or A (controller) to toggle. Aim with WASD/leftStick + say a move name.");
-        }
-
-        private static Transform FindOppositeSpawnPivot(Vector3 localPos)
-        {
-            var pivotA = GameObject.Find("MonsterSpawnPivotA");
-            var pivotB = GameObject.Find("MonsterSpawnPivotB");
-            if (pivotA == null && pivotB == null) return null;
-            if (pivotA == null) return pivotB.transform;
-            if (pivotB == null) return pivotA.transform;
-            float dA = (pivotA.transform.position - localPos).sqrMagnitude;
-            float dB = (pivotB.transform.position - localPos).sqrMagnitude;
-            return dA < dB ? pivotB.transform : pivotA.transform;
+            if (origin == null) return;
+            var xrMove = origin.gameObject.GetComponentInChildren<UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider>(true);
+            if (xrMove != null) xrMove.enabled = false;
+            var editorMove = origin.GetComponent<Tigerverse.Core.FlatMoveController>();
+            if (editorMove != null) editorMove.enabled = false;
         }
 
         [MenuItem("Tigerverse/Dev -> AUDIO DIAG: RESET audio engine (re-pick Windows default device)")]

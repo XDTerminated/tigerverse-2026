@@ -30,6 +30,19 @@ namespace Tigerverse.Voice
 
         /// <summary>The local player's currently-bound moveset, or null if no battle is active. Read-only view for HUDs.</summary>
         public MoveSO[] AvailableMoves => availableMoves;
+
+        // Per-move cooldown gate. Maps a move asset to the earliest Time.time
+        // at which it can be cast again. Cleared on Bind() so a fresh battle
+        // doesn't inherit the previous one's stale cooldowns.
+        private readonly Dictionary<MoveSO, float> _nextCastAt = new Dictionary<MoveSO, float>();
+
+        /// <summary>Seconds remaining on this move's cooldown, or 0 if it's ready. For HUD/UI.</summary>
+        public float GetCooldownRemaining(MoveSO move)
+        {
+            if (move == null) return 0f;
+            if (!_nextCastAt.TryGetValue(move, out float t)) return 0f;
+            return Mathf.Max(0f, t - Time.time);
+        }
         private bool       isRecording;
         private bool       triggerWasPressed;
         private bool       spaceWasPressed;
@@ -172,6 +185,7 @@ namespace Tigerverse.Voice
             this.battle         = battle;
             this.casterIndex    = casterIndex;
             this.availableMoves = availableMoves;
+            _nextCastAt.Clear();
         }
 
         // Tap-to-record mode: press once → records for `tapRecordSec` seconds → auto-processes.
@@ -555,36 +569,20 @@ namespace Tigerverse.Voice
 
             if (bestMove != null && (bestSubstring || bestScore < matchThreshold))
             {
-                // Battle control mode gate: only Scribble mode issues moves.
-                // While the player is in Artist mode (steering their monster
-                // around), voice commands are intentionally ignored.
-                var modeMgr = Tigerverse.Combat.BattleControlModeManager.Instance;
-                if (modeMgr != null && !modeMgr.CanAttack)
+                // Per-move cooldown gate. Each move locks itself out for
+                // bestMove.cooldownSeconds after a successful cast — stronger
+                // moves are tuned with longer cooldowns. Other moves stay
+                // available, so the player can still cycle through their kit.
+                if (_nextCastAt.TryGetValue(bestMove, out float readyAt) && Time.time < readyAt)
                 {
-                    Debug.Log($"[VoiceCommandRouter] Move '{bestMove.displayName}' ignored — switch to Scribble mode (press A) to attack.");
+                    Debug.Log($"[VoiceCommandRouter] '{bestMove.displayName}' on cooldown ({(readyAt - Time.time):F1}s remaining).");
+                    OnNoMatch?.Invoke(transcript);
                     return;
                 }
 
-                // Aim-and-cast path: if a MonsterAimController exists in the
-                // scene we route through it so the move spawns a projectile
-                // along the current aim direction (cooldown enforced there).
-                // The aim controller calls battle.SubmitMove on hit, so the
-                // existing damage / HP-sync / OnBattleEnd pipeline runs the
-                // same way it always has — just gated on a real collision.
-                var aim = Tigerverse.Combat.MonsterAimController.LocalInstance;
-                if (aim != null)
-                {
-                    aim.LaunchAttack(bestMove, casterIndex);
-                    OnMoveCast?.Invoke(bestMove);
-                }
-                else
-                {
-                    // Fallback for non-battle paths (tutorial / mock / pre-aim
-                    // scenes): preserve the original direct-submit behaviour
-                    // so voice still works there.
-                    if (battle != null) battle.SubmitMove(bestMove, casterIndex);
-                    OnMoveCast?.Invoke(bestMove);
-                }
+                if (battle != null) battle.SubmitMove(bestMove, casterIndex);
+                _nextCastAt[bestMove] = Time.time + Mathf.Max(0f, bestMove.cooldownSeconds);
+                OnMoveCast?.Invoke(bestMove);
             }
             else
             {

@@ -367,15 +367,14 @@ namespace Tigerverse.Core
 
             SetState(AppState.Battle);
 
-            // Stand up the trainer/scribble control toggle for the battle.
-            // Idempotent: tears down any prior manager (e.g. from a rematch).
-            SetupBattleControlMode();
+            // Lock the trainer's locomotion + spawn the head-locked battle
+            // HUD. Idempotent: re-runs cleanly on rematch.
+            SetupBattleLocomotionAndHud();
 
             // Snap each player behind their own monster so they can see both
             // creatures in front of them with a clear sightline. Order
-            // matters: SetupBattleControlMode disabled the move providers, so
-            // setting the rig position now won't be immediately undone by a
-            // joystick frame.
+            // matters: locomotion was just disabled, so setting the rig
+            // position now won't be immediately undone by a joystick frame.
             PositionPlayerBehindMonster();
 
             if (battle != null)
@@ -474,7 +473,7 @@ namespace Tigerverse.Core
         // cutscene) so the snap is instant from the player's POV, and again
         // at SetState(AppState.Battle) as a backstop against any rig
         // movement that snuck in during the cutscene. Locomotion is locked
-        // by SetupBattleControlMode, so the player stays parked here for
+        // by SetupBattleLocomotionAndHud, so the player stays parked here for
         // the rest of the fight.
         private void PositionPlayerBehindMonster()
         {
@@ -483,70 +482,32 @@ namespace Tigerverse.Core
             Combat.BattleStance.PositionBehindMonster(localMonster, opponentMonster);
         }
 
-        // ─── Battle control mode (Trainer / Scribble) ──────────────────────
-        // The local player toggles with A. In Trainer mode they shout move
-        // names; in Scribble mode they steer the local scribble with the
-        // left stick to dodge. The trainer's body locomotion is locked in
-        // BOTH modes — the toggle only changes who the joystick drives and
-        // whether voice attacks fire.
-        private void SetupBattleControlMode()
+        // ─── Battle locomotion lock + HUD ─────────────────────────────────
+        // Battle is voice-only now: the player stays parked behind their
+        // monster and shouts move names to attack. Per-move cooldowns
+        // (enforced inside VoiceCommandRouter) keep stronger moves from
+        // being spammed. There's no aim, no movement mode, no toggle.
+        private void SetupBattleLocomotionAndHud()
         {
-            // Tear down any prior instance (rematch / re-entry into Battle).
-            var prior = BattleControlModeManager.Instance;
-            if (prior != null) Destroy(prior.gameObject);
-            var priorOverlay = GameObject.Find("BattleModeOverlay");
-            if (priorOverlay != null) Destroy(priorOverlay);
+            // Tear down a prior HUD (rematch / re-entry into Battle).
+            var priorHud = GameObject.Find("BattleHUD");
+            if (priorHud != null) Destroy(priorHud);
 
-            // Local scribble = the monster GO that belongs to this client.
-            GameObject localScribble = localCasterIndex == 0 ? monsterAGo : monsterBGo;
-            if (localScribble == null)
-            {
-                Debug.LogWarning("[GameStateManager] No local scribble GO — battle control mode setup skipped.");
-                return;
-            }
-
-            // Resolve XR rig + locomotion components.
+            // Resolve XR rig + locomotion components and turn them off so
+            // the player can't wander mid-fight.
             var origin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
-            UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider xrMove = null;
-            FlatMoveController editorMove = null;
             if (origin != null)
             {
-                xrMove = origin.gameObject.GetComponentInChildren<UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider>(true);
-                editorMove = origin.GetComponent<FlatMoveController>();
+                var xrMove = origin.gameObject.GetComponentInChildren<UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider>(true);
+                if (xrMove != null) xrMove.enabled = false;
+                var editorMove = origin.GetComponent<FlatMoveController>();
+                if (editorMove != null) editorMove.enabled = false;
             }
-
-            // Add the joystick→scribble driver. Disabled here; manager flips
-            // it on when the player switches to Scribble mode. Hand it the
-            // XR rig so it can snap the camera into the scribble's POV.
-            var scribbleMover = localScribble.GetComponent<ScribbleMoveController>();
-            if (scribbleMover == null) scribbleMover = localScribble.AddComponent<ScribbleMoveController>();
-            scribbleMover.target = localScribble.transform;
-            scribbleMover.xrOrigin = origin != null ? origin.transform : null;
-            scribbleMover.enabled = false;
-
-            // Head-locked banner that flashes the new mode name on toggle.
-            var overlayGo = new GameObject("BattleModeOverlay", typeof(RectTransform));
-            var overlay = overlayGo.AddComponent<BattleModeOverlay>();
-
-            // Manager itself.
-            var mgrGo = new GameObject("BattleControlModeManager");
-            var mgr = mgrGo.AddComponent<BattleControlModeManager>();
-            mgr.Configure(xrMove, editorMove, scribbleMover, overlay);
 
             // Battle HUD: 4 moves on the right + event log on the left.
             var hudGo = new GameObject("BattleHUD", typeof(RectTransform));
             var hud = hudGo.AddComponent<BattleHUD>();
-            hud.Configure(mgr, voiceRouter);
-
-            // Aim-and-cast controller on the local monster. Reticle hovers
-            // in front in Scribble mode; voice-cast spawns a projectile
-            // toward the reticle. Cooldown enforced inside the controller.
-            GameObject opponentMonster = localCasterIndex == 0 ? monsterBGo : monsterAGo;
-            var aim = localScribble.GetComponent<Combat.MonsterAimController>();
-            if (aim == null) aim = localScribble.AddComponent<Combat.MonsterAimController>();
-            aim.opponent     = opponentMonster != null ? opponentMonster.transform : null;
-            aim.casterIndex  = localCasterIndex;
-            aim.battle       = battle;
+            hud.Configure(voiceRouter);
         }
 
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)

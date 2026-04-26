@@ -117,9 +117,9 @@ namespace Tigerverse.Combat
 
         private void ResolveMove(byte moveId, int casterIndex)
         {
-            // Free-fire mode: either player can submit at any time. Caster-
-            // side cooldown lives on MonsterAimController to prevent voice
-            // spam. The only hard gate here is "battle is over" (Phase=End).
+            // Free-fire mode: either player can submit at any time. Per-move
+            // cooldowns live on the caster's VoiceCommandRouter. The only
+            // hard gate here is "battle is over" (Phase=End).
             if (Phase == BattlePhase.End) return;
 
             if (catalog == null || catalog.moves == null || moveId >= catalog.moves.Length) return;
