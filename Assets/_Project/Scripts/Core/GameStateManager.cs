@@ -388,8 +388,39 @@ namespace Tigerverse.Core
                 if (voiceRouter != null)
                 {
                     var statsForLocal = localCasterIndex == 0 ? statsA : statsB;
-                    voiceRouter.Bind(battle, localCasterIndex, statsForLocal != null ? statsForLocal.moves : null);
-                    Debug.Log($"[GameStateManager] Battle voice bound. caster={localCasterIndex} statsForLocal={(statsForLocal!=null?statsForLocal.displayName:"NULL")} moves.Length={(statsForLocal?.moves?.Length ?? -1)} firstMove={(statsForLocal?.moves != null && statsForLocal.moves.Length>0 ? statsForLocal.moves[0]?.displayName : "<none>")}");
+                    var movesForLocal = statsForLocal?.moves;
+
+                    // Hard fallback: if for ANY reason the stats kit is null
+                    // or empty (catalog ref missing, FromData edge case, etc),
+                    // pull 4 moves directly from the MoveCatalog singleton so
+                    // the wrist HUD always shows real names AND voice always
+                    // has something to match against. Without this the HUD
+                    // shows "move 1, move 2..." and voice silently fails.
+                    if (movesForLocal == null || movesForLocal.Length == 0)
+                    {
+                        Debug.LogWarning($"[GameStateManager] statsForLocal.moves was null/empty — falling back to MoveCatalog defaults so battle is playable.");
+                        var fbCatalog = catalog != null ? catalog : MoveCatalog.Instance;
+                        if (fbCatalog != null)
+                        {
+                            var list = new System.Collections.Generic.List<MoveSO>();
+                            string[] defaults = { "Fireball", "Watergun", "Thunderbolt", "Iceshard" };
+                            for (int i = 0; i < defaults.Length; i++)
+                            {
+                                var m = fbCatalog.Find(defaults[i]);
+                                if (m != null) list.Add(m);
+                            }
+                            if (list.Count == 0 && fbCatalog.moves != null)
+                            {
+                                // Catalog is missing the named moves entirely — grab the first 4 it has.
+                                for (int i = 0; i < fbCatalog.moves.Length && list.Count < 4; i++)
+                                    if (fbCatalog.moves[i] != null) list.Add(fbCatalog.moves[i]);
+                            }
+                            movesForLocal = list.ToArray();
+                        }
+                    }
+
+                    voiceRouter.Bind(battle, localCasterIndex, movesForLocal);
+                    Debug.Log($"[GameStateManager] Battle voice bound. caster={localCasterIndex} statsForLocal={(statsForLocal!=null?statsForLocal.displayName:"NULL")} moves.Length={(movesForLocal?.Length ?? -1)} firstMove={(movesForLocal != null && movesForLocal.Length>0 ? movesForLocal[0]?.displayName : "<none>")}");
 
                     // Force the mic into a clean listening state for combat.
                     // Three things can leave the mic borked at battle start:
@@ -409,12 +440,13 @@ namespace Tigerverse.Core
 
                     // Announce the local player's moves via TTS so they know what to call out.
                     var ann = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
-                    if (ann != null && statsForLocal != null && statsForLocal.moves != null && statsForLocal.moves.Length > 0)
+                    if (ann != null && movesForLocal != null && movesForLocal.Length > 0)
                     {
                         var moveNames = new System.Collections.Generic.List<string>();
-                        foreach (var m in statsForLocal.moves) if (m != null) moveNames.Add(m.displayName);
+                        foreach (var m in movesForLocal) if (m != null) moveNames.Add(m.displayName);
                         string list = string.Join(", ", moveNames);
-                        ann.Say($"Your monster {statsForLocal.displayName} knows: {list}. Just shout a move name to attack.");
+                        string monsterName = statsForLocal != null ? statsForLocal.displayName : "Your monster";
+                        ann.Say($"{monsterName} knows: {list}. Just shout a move name to attack.");
                     }
                 }
             }
