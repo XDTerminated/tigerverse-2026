@@ -149,7 +149,14 @@ namespace Tigerverse.UI
                 voiceRouter.OnTranscript.RemoveListener(OnPracticeTranscript);
                 voiceRouter.OnTranscript.RemoveListener(OnGuidedMoveTranscript);
                 voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
-                voiceRouter.SetOpenMicMode(false); // restore push-to-talk for combat
+                // Don't gag the mic on tear-down — if SpeakLine was mid-flight
+                // when the tutorial got destroyed, its SetMuted(false) never
+                // ran and battle would inherit a permanently-muted mic.
+                voiceRouter.SetMuted(false);
+                // Leave open-mic state alone here — GameStateManager.RunBattlePhase
+                // will explicitly turn it back on for combat. Setting false here
+                // would create a brief push-to-talk window between tutorial end
+                // and battle start that we don't actually want.
             }
             if (_practiceHud != null)
             {
