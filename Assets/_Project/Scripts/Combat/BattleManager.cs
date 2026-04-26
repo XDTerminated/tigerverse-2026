@@ -99,15 +99,40 @@ namespace Tigerverse.Combat
 
         public void SubmitMove(MoveSO move, int casterIndex)
         {
-            Debug.Log($"[Battle] SubmitMove '{(move!=null?move.displayName:"<null>")}' caster={casterIndex} catalogIdx={(catalog!=null?catalog.IndexOf(move):-1)} hasObject={(Object!=null)}");
-            if (move == null || catalog == null) return;
+            if (move == null) { Debug.LogWarning("[Battle] SubmitMove called with null move."); return; }
+            // Auto-resolve catalog if it wasn't wired in inspector — the
+            // BattleManager.Spawned() callback only fires when the NetworkObject
+            // is properly spawned. If it isn't, catalog stays null and every
+            // SubmitMove silently no-ops. Loading from the singleton here
+            // guarantees move lookup works even pre-spawn.
+            if (catalog == null) catalog = MoveCatalog.Instance;
+            if (catalog == null) { Debug.LogError("[Battle] No MoveCatalog available — cannot submit move."); return; }
+
             int id = catalog.IndexOf(move);
+            Debug.Log($"[Battle] SubmitMove '{move.displayName}' caster={casterIndex} catalogIdx={id} hasObject={(Object!=null)} hasAuth={(Object!=null && HasStateAuthority)}");
             if (id < 0 || id > byte.MaxValue)
             {
                 Debug.LogWarning($"[BattleManager] Move '{move.displayName}' not in catalog; cannot submit.");
                 return;
             }
-            RPC_RequestMove((byte)id, casterIndex);
+
+            // Network path: NetworkObject spawned → RPC routes to state
+            // authority → ResolveMove runs there → [Networked] HP replicates.
+            // Local fallback: if the NetworkObject isn't spawned for any
+            // reason (scene authoring miss, runner not started, etc), call
+            // ResolveMove directly so damage at LEAST applies on the local
+            // client. Multiplayer sync is degraded in this fallback path
+            // (the other player won't see the HP drop) but the alternative
+            // is silently doing nothing, which is worse.
+            if (Object != null && Object.IsValid)
+            {
+                RPC_RequestMove((byte)id, casterIndex);
+            }
+            else
+            {
+                Debug.LogWarning("[Battle] NetworkObject invalid — applying move LOCALLY (no multiplayer sync).");
+                ResolveMove((byte)id, casterIndex);
+            }
         }
 
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -146,7 +171,7 @@ namespace Tigerverse.Combat
                 freezeCaster = false;
                 EffectFlags skipFlags = EffectFlags.Frozen;
                 FlipTurn(casterIndex);
-                RPC_PlayResolved(moveId, casterIndex, casterIsA ? HPb : HPa, (byte)skipFlags, 0);
+                DispatchResolved(moveId, casterIndex, casterIsA ? HPb : HPa, (byte)skipFlags, 0);
                 return;
             }
 
@@ -266,7 +291,7 @@ namespace Tigerverse.Combat
             if (finalBlow) effects |= EffectFlags.FinalBlow;
 
             int newDefenderHP = casterIsA ? HPb : HPa;
-            RPC_PlayResolved(moveId, casterIndex, newDefenderHP, (byte)effects, damage);
+            DispatchResolved(moveId, casterIndex, newDefenderHP, (byte)effects, damage);
         }
 
         private void FlipTurn(int casterIndex)
@@ -283,8 +308,35 @@ namespace Tigerverse.Combat
             }
         }
 
+        // Dispatcher: prefer the RPC path (replicates to all clients) when
+        // we have a valid spawned NetworkObject AND state authority. Fall
+        // back to a direct local call otherwise — the local fallback in
+        // SubmitMove (when Object is null) ends up here and still drives
+        // the HP UI + animation pipeline for the caller, even if the other
+        // client won't receive the resolution.
+        private void DispatchResolved(byte moveId, int casterIndex, int newDefenderHp, byte effectFlags, int damageDealt)
+        {
+            if (Object != null && Object.IsValid && HasStateAuthority)
+            {
+                RPC_PlayResolved(moveId, casterIndex, newDefenderHp, effectFlags, damageDealt);
+            }
+            else
+            {
+                PlayResolvedLocal(moveId, casterIndex, newDefenderHp, effectFlags, damageDealt);
+            }
+        }
+
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
         private void RPC_PlayResolved(byte moveId, int casterIndex, int newDefenderHp, byte effectFlags, int damageDealt)
+        {
+            PlayResolvedLocal(moveId, casterIndex, newDefenderHp, effectFlags, damageDealt);
+        }
+
+        // Plain (non-RPC) version of the resolved-move handler. The RPC
+        // delegates to this so the local fallback path in SubmitMove (which
+        // can't fire RPCs without a NetworkObject) can still drive the HP
+        // bar / animation pipeline directly.
+        private void PlayResolvedLocal(byte moveId, int casterIndex, int newDefenderHp, byte effectFlags, int damageDealt)
         {
             if (catalog == null || catalog.moves == null || moveId >= catalog.moves.Length) return;
             var move = catalog.moves[moveId];
