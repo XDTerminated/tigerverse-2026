@@ -36,10 +36,14 @@ namespace Tigerverse.UI
                 : Object.FindFirstObjectByType<EventSystem>();
             if (es == null) return;
 
-            // Strip the broken XR module — its action asset reference is dangling
-            // (m_ActionsAsset GUID points to nothing, so no actions ever fire).
+            // If an XRUIInputModule is already present and enabled, leave the
+            // EventSystem alone — XRI's NearFarInteractor talks to that
+            // module directly, and swapping in InputSystemUIInputModule
+            // breaks every VR controller UI click. The original "XR module
+            // is broken" assumption only applied right after a teammate's
+            // overhaul; with the current scene the XR module is fine.
             var xr = es.GetComponent<UnityEngine.XR.Interaction.Toolkit.UI.XRUIInputModule>();
-            if (xr != null) Object.Destroy(xr);
+            if (xr != null && xr.enabled) return;
 
             var module = es.GetComponent<InputSystemUIInputModule>();
             if (module == null) module = es.gameObject.AddComponent<InputSystemUIInputModule>();

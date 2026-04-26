@@ -154,11 +154,22 @@ namespace Tigerverse.UI
             // is ready by the time we actually need it for the practice beat.
             StartCoroutine(LoadBorrowedScribble());
 
+            // Prefetch ALL scripted-line audio in parallel up front. Without
+            // this, every new line incurred a fresh ElevenLabs round-trip
+            // (~1-3s) that the player perceived as a "freeze" between lines.
+            // Now line N+1's audio is fetching while line N is still playing.
+            var prefetched = new AudioClip[ScriptedLines.Length];
+            for (int i = 0; i < ScriptedLines.Length; i++)
+            {
+                int captured = i;
+                StartCoroutine(PrefetchTtsLine(ScriptedLines[captured], clip => prefetched[captured] = clip));
+            }
+
             for (int i = 0; i < ScriptedLines.Length; i++)
             {
                 if (_stopRequested) yield break;
 
-                yield return SpeakLine(ScriptedLines[i]);
+                yield return SpeakLineWithPrefetch(ScriptedLines[i], () => prefetched[i]);
                 yield return new WaitForSeconds(0.20f);
 
                 if (i == LineIdx_LendScribble)
@@ -551,6 +562,60 @@ namespace Tigerverse.UI
             return sb.ToString();
         }
 
+        // ─── Prefetched-line playback ───────────────────────────────────
+        // Issued in parallel from RunTutorial so that by the time the
+        // Professor finishes line N, line N+1's clip is already decoded
+        // and ready to play with no inter-line gap.
+        private IEnumerator PrefetchTtsLine(string text, System.Action<AudioClip> onReady)
+        {
+            if (config == null || string.IsNullOrEmpty(config.elevenLabsApiKey))
+            {
+                onReady?.Invoke(null);
+                yield break;
+            }
+            string voiceId = !string.IsNullOrEmpty(overrideVoiceId)
+                ? overrideVoiceId
+                : (string.IsNullOrEmpty(config.elevenLabsTtsVoiceId) ? FallbackVoice : config.elevenLabsTtsVoiceId);
+
+            AudioClip got = null;
+            yield return FetchTtsClip(voiceId, text, true, c => got = c);
+            onReady?.Invoke(got);
+        }
+
+        // SpeakLine variant that uses an already-prefetched clip when
+        // available, falling back to a fresh request only if prefetch
+        // hasn't returned yet (or returned null).
+        private IEnumerator SpeakLineWithPrefetch(string text, System.Func<AudioClip> getClip)
+        {
+            ShowSubtitle(text);
+            _professor?.SpeakingPulse(EstimateLineDuration(text));
+            if (voiceRouter != null) voiceRouter.SetMuted(true);
+
+            // Wait briefly for prefetch to finish (it's already in flight),
+            // but cap the wait so we never stall if the request died.
+            float waited = 0f;
+            AudioClip clip = getClip();
+            while (clip == null && waited < 4f)
+            {
+                waited += Time.deltaTime;
+                yield return null;
+                clip = getClip();
+            }
+
+            if (clip == null)
+            {
+                // Prefetch never delivered — fall back to a one-shot fetch.
+                yield return SpeakLine(text);
+                yield break;
+            }
+
+            _audio.PlayOneShot(clip);
+            _professor?.SpeakingPulse(clip.length);
+            yield return new WaitForSeconds(clip.length);
+            yield return new WaitForSeconds(0.4f);
+            if (voiceRouter != null) voiceRouter.SetMuted(false);
+        }
+
         // ─── Speech ─────────────────────────────────────────────────────
         private IEnumerator SpeakLine(string text)
         {
@@ -589,6 +654,55 @@ namespace Tigerverse.UI
             if (voiceRouter != null) voiceRouter.SetMuted(false);
         }
 
+        // Fetch-only version used by the prefetch path — returns the clip
+        // via callback instead of playing it. Same fallback chain as TryTts.
+        private IEnumerator FetchTtsClip(string voiceId, string text, bool tryFallback, System.Action<AudioClip> onResult)
+        {
+            string url  = $"https://api.elevenlabs.io/v1/text-to-speech/{voiceId}";
+            string body = Newtonsoft.Json.JsonConvert.SerializeObject(new { text = text, model_id = ttsModelId });
+            using (var req = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
+            {
+                req.uploadHandler   = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body));
+                var dh = new DownloadHandlerAudioClip(url, AudioType.MPEG);
+                dh.streamAudio = true;
+                dh.compressed  = true;
+                req.downloadHandler = dh;
+                req.SetRequestHeader("xi-api-key", config.elevenLabsApiKey);
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.SetRequestHeader("Accept", "audio/mpeg");
+                req.timeout = 8;
+
+                yield return req.SendWebRequest();
+
+                bool err = req.result != UnityWebRequest.Result.Success || req.responseCode >= 400;
+                if (err)
+                {
+                    Debug.LogWarning($"[ProfessorTutorial] Prefetch HTTP {req.responseCode} voiceId={voiceId} {req.error}");
+                    if (tryFallback && voiceId != FallbackVoice)
+                    {
+                        yield return FetchTtsClip(FallbackVoice, text, false, onResult);
+                        yield break;
+                    }
+                    onResult?.Invoke(null);
+                    yield break;
+                }
+
+                AudioClip clip = DownloadHandlerAudioClip.GetContent(req);
+                if (clip == null || clip.length < 0.05f || clip.samples == 0)
+                {
+                    if (tryFallback && voiceId != FallbackVoice)
+                    {
+                        yield return FetchTtsClip(FallbackVoice, text, false, onResult);
+                        yield break;
+                    }
+                    onResult?.Invoke(null);
+                    yield break;
+                }
+
+                onResult?.Invoke(clip);
+            }
+        }
+
         // Inner TTS attempt. On HTTP error or empty/zero-length clip and
         // tryFallback==true, retries with the Rachel default voice.
         // Uses DownloadHandlerAudioClip directly (as Announcer.cs does)
@@ -601,11 +715,21 @@ namespace Tigerverse.UI
             using (var req = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
             {
                 req.uploadHandler   = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body));
-                req.downloadHandler = new DownloadHandlerAudioClip(url, AudioType.MPEG);
+                // Stream the MP3 + keep it compressed in memory so the
+                // synchronous Vorbis/MP3 decode that happens on
+                // GetContent() doesn't spike the main thread for 100+ ms
+                // every line. Quest is sensitive to this and the user was
+                // seeing the whole game freeze per Professor line.
+                var dh = new DownloadHandlerAudioClip(url, AudioType.MPEG);
+                dh.streamAudio = true;
+                dh.compressed  = true;
+                req.downloadHandler = dh;
                 req.SetRequestHeader("xi-api-key", config.elevenLabsApiKey);
                 req.SetRequestHeader("Content-Type", "application/json");
                 req.SetRequestHeader("Accept", "audio/mpeg");
-                req.timeout = 30;
+                // 30s was way too long — if ElevenLabs hasn't produced
+                // anything in 8s the line is dead and we should fall back.
+                req.timeout = 8;
 
                 yield return req.SendWebRequest();
 

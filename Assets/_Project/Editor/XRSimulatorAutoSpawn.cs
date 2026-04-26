@@ -48,7 +48,13 @@ namespace Tigerverse.EditorTools
         private static void OnPlayModeChanged(PlayModeStateChange state)
         {
             if (state != PlayModeStateChange.EnteredPlayMode) return;
-            if (!EditorPrefs.GetBool(EnabledKey, true)) return;
+            // HARD-OFF: the XR Device Simulator was intercepting real Quest
+            // controller input (UI clicks especially), so we never want it
+            // to auto-spawn. Re-enable by removing this early return if you
+            // need laptop-only testing back.
+            return;
+#pragma warning disable CS0162
+            if (!EditorPrefs.GetBool(EnabledKey, false)) return;
 
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
             if (prefab == null)
@@ -58,17 +64,15 @@ namespace Tigerverse.EditorTools
                 return;
             }
 
-            // Skip if a simulator already exists (e.g. someone added one to the scene manually).
             var existing = Object.FindFirstObjectByType<UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation.XRDeviceSimulator>();
             if (existing != null) return;
 
             var instance = Object.Instantiate(prefab);
             instance.name = prefab.name + " (Editor Sim)";
-            // Move into the active scene rather than DontDestroyOnLoad so the
-            // simulator dies cleanly when scenes change or play mode exits.
             SceneManager.MoveGameObjectToScene(instance, SceneManager.GetActiveScene());
             Debug.Log("[Tigerverse] Spawned XR Device Simulator for laptop testing. " +
                       "Use the on-screen overlay or the package docs for controls.");
+#pragma warning restore CS0162
         }
     }
 }

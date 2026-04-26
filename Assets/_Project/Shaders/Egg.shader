@@ -34,7 +34,11 @@ Shader "Tigerverse/Egg"
         {
             Name "EggLit"
             Tags { "LightMode"="UniversalForward" }
-            Cull Off
+            // Cull back so the mesh reads as a solid opaque shell. Cull Off
+            // was producing a holographic / see-through look because the
+            // back faces of the thin shell rendered through the front.
+            Cull Back
+            ZWrite On
 
             HLSLPROGRAM
             #pragma vertex vert

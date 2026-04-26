@@ -140,9 +140,33 @@ namespace Tigerverse.Core
         {
             var btnGo = new GameObject("StartTutorialButton");
             btnGo.transform.SetParent(transform, false);
-            btnGo.transform.localPosition = (Vector3.up * eggHoverHeight) + startButtonOffset;
-            // Face the camera (or world +Z fallback).
+
+            // Position the button relative to the EGG and the LOCAL CAMERA,
+            // not in the pivot's local space. Player 2's pivot can be
+            // rotated 180° relative to player 1's, which used to place the
+            // button behind their head — so they couldn't see or press it.
+            //
+            // Strategy: anchor the button beside the egg in the horizontal
+            // plane perpendicular to the camera's forward, on the right
+            // side from the camera's POV.
+            Vector3 eggWorld = transform.position + Vector3.up * eggHoverHeight;
+            Vector3 sidewaysOffset = Vector3.right * 0.55f;
             var cam = Camera.main;
+            if (cam != null)
+            {
+                Vector3 camToEgg = eggWorld - cam.transform.position;
+                camToEgg.y = 0f;
+                if (camToEgg.sqrMagnitude > 1e-4f)
+                {
+                    Vector3 forward = camToEgg.normalized;
+                    // "Right" relative to the camera-looking-at-egg axis.
+                    Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+                    sidewaysOffset = right * 0.55f;
+                }
+            }
+            btnGo.transform.position = eggWorld + sidewaysOffset + new Vector3(0f, -0.05f, 0f);
+
+            // Face the camera so the label is readable to the local player.
             if (cam != null)
             {
                 Vector3 toCam = cam.transform.position - btnGo.transform.position;
@@ -150,6 +174,7 @@ namespace Tigerverse.Core
                 if (toCam.sqrMagnitude > 1e-4f)
                     btnGo.transform.rotation = Quaternion.LookRotation(-toCam.normalized, Vector3.up);
             }
+
             _startButton = btnGo.AddComponent<TutorialStartButton>();
             _startButton.OnPressed += StartTutorial;
         }
