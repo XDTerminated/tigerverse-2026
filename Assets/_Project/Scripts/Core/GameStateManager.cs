@@ -376,89 +376,90 @@ namespace Tigerverse.Core
 
             Debug.Log($"[GameStateManager] Entering battle. statsA={(statsA!=null?statsA.displayName:"NULL")} statsA.moves.Length={(statsA?.moves?.Length ?? -1)} statsB={(statsB!=null?statsB.displayName:"NULL")} statsB.moves.Length={(statsB?.moves?.Length ?? -1)}");
 
-            // Bind the voice router and initialize the battle BEFORE spawning
-            // the HUD, so the HUD's first Configure call sees real moves
-            // (instead of relying on auto-refresh to catch a later rebind).
-            if (battle != null)
+            // ─── Resolve the local player's moveset ───────────────────────
+            // Done UNCONDITIONALLY (outside the battle-null check) so the
+            // wrist HUD always shows real names even if the BattleManager
+            // ref isn't wired in the scene. The bulletproof fallback chain:
+            //   stats.moves → catalog.Find by name → catalog.moves[0..3]
+            var statsForLocal = localCasterIndex == 0 ? statsA : statsB;
+            var movesForLocal = statsForLocal?.moves;
+
+            if (movesForLocal == null || movesForLocal.Length == 0)
             {
-                battle.Initialize(statsA, statsB);
-                battle.OnHPChanged.AddListener(HandleHPChanged);
-                battle.OnBattleEnd.AddListener(HandleBattleEnd);
-
-                if (voiceRouter != null)
+                Debug.LogWarning($"[GameStateManager] statsForLocal.moves was null/empty — falling back to MoveCatalog defaults so battle is playable.");
+                var fbCatalog = catalog != null ? catalog : MoveCatalog.Instance;
+                if (fbCatalog != null)
                 {
-                    var statsForLocal = localCasterIndex == 0 ? statsA : statsB;
-                    var movesForLocal = statsForLocal?.moves;
-
-                    // Hard fallback: if for ANY reason the stats kit is null
-                    // or empty (catalog ref missing, FromData edge case, etc),
-                    // pull 4 moves directly from the MoveCatalog singleton so
-                    // the wrist HUD always shows real names AND voice always
-                    // has something to match against. Without this the HUD
-                    // shows "move 1, move 2..." and voice silently fails.
-                    if (movesForLocal == null || movesForLocal.Length == 0)
+                    var list = new System.Collections.Generic.List<MoveSO>();
+                    string[] defaults = { "Fireball", "Watergun", "Thunderbolt", "Iceshard" };
+                    for (int i = 0; i < defaults.Length; i++)
                     {
-                        Debug.LogWarning($"[GameStateManager] statsForLocal.moves was null/empty — falling back to MoveCatalog defaults so battle is playable.");
-                        var fbCatalog = catalog != null ? catalog : MoveCatalog.Instance;
-                        if (fbCatalog != null)
-                        {
-                            var list = new System.Collections.Generic.List<MoveSO>();
-                            string[] defaults = { "Fireball", "Watergun", "Thunderbolt", "Iceshard" };
-                            for (int i = 0; i < defaults.Length; i++)
-                            {
-                                var m = fbCatalog.Find(defaults[i]);
-                                if (m != null) list.Add(m);
-                            }
-                            if (list.Count == 0 && fbCatalog.moves != null)
-                            {
-                                // Catalog is missing the named moves entirely — grab the first 4 it has.
-                                for (int i = 0; i < fbCatalog.moves.Length && list.Count < 4; i++)
-                                    if (fbCatalog.moves[i] != null) list.Add(fbCatalog.moves[i]);
-                            }
-                            movesForLocal = list.ToArray();
-                        }
+                        var m = fbCatalog.Find(defaults[i]);
+                        if (m != null) list.Add(m);
                     }
-
-                    voiceRouter.Bind(battle, localCasterIndex, movesForLocal);
-                    Debug.Log($"[GameStateManager] Battle voice bound. caster={localCasterIndex} statsForLocal={(statsForLocal!=null?statsForLocal.displayName:"NULL")} moves.Length={(movesForLocal?.Length ?? -1)} firstMove={(movesForLocal != null && movesForLocal.Length>0 ? movesForLocal[0]?.displayName : "<none>")}");
-
-                    // Force the mic into a clean listening state for combat.
-                    // Three things can leave the mic borked at battle start:
-                    //   1. ReadyHandshake / ProfessorTutorial OnDestroy paths
-                    //      turn open-mic OFF (push-to-talk only — no good
-                    //      here, we want continuous listening).
-                    //   2. ProfessorTutorial mutes the mic during TTS lines
-                    //      and unmutes after; if the tutorial gets destroyed
-                    //      mid-speak, the unmute never fires and the mic
-                    //      stays gagged forever.
-                    //   3. SubmitMove cooldowns from the practice phase carry
-                    //      over via Bind() but that's already cleared.
-                    // Force-clear all three here so combat always starts with
-                    // a hot mic that listens for move names.
-                    voiceRouter.SetMuted(false);
-                    voiceRouter.SetOpenMicMode(true);
-                    // Force the mic to restart cleanly so we don't inherit a
-                    // wedged VAD state (e.g. mic ended by ReadyHandshake but
-                    // not re-opened, or device pick stale from before XR
-                    // initialized). Without this, the player can shout into
-                    // a dead mic and nothing transcribes.
-                    voiceRouter.RestartMic();
-
-                    // Announce the local player's moves via TTS so they know what to call out.
-                    var ann = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
-                    if (ann != null && movesForLocal != null && movesForLocal.Length > 0)
+                    if (list.Count == 0 && fbCatalog.moves != null)
                     {
-                        var moveNames = new System.Collections.Generic.List<string>();
-                        foreach (var m in movesForLocal) if (m != null) moveNames.Add(m.displayName);
-                        string list = string.Join(", ", moveNames);
-                        string monsterName = statsForLocal != null ? statsForLocal.displayName : "Your monster";
-                        ann.Say($"{monsterName} knows: {list}. Just shout a move name to attack.");
+                        // Catalog is missing the named moves entirely, grab the first 4 it has.
+                        for (int i = 0; i < fbCatalog.moves.Length && list.Count < 4; i++)
+                            if (fbCatalog.moves[i] != null) list.Add(fbCatalog.moves[i]);
                     }
+                    movesForLocal = list.ToArray();
+                }
+            }
+
+            // ─── Find a BattleManager — inspector ref OR scene search ───
+            // If the SerializeField wasn't wired, search the scene so RPC-
+            // backed damage still works. Without this, voice would match but
+            // the SubmitMove call would no-op silently.
+            var resolvedBattle = battle;
+            if (resolvedBattle == null)
+            {
+                resolvedBattle = FindFirstObjectByType<BattleManager>();
+                if (resolvedBattle != null)
+                {
+                    Debug.LogWarning($"[GameStateManager] battle SerializeField was null — found one in scene: {resolvedBattle.name}");
+                }
+                else
+                {
+                    Debug.LogError("[GameStateManager] No BattleManager in scene. Damage cannot apply. Add a BattleManager GameObject + NetworkObject to the scene.");
+                }
+            }
+
+            // ─── Initialize and bind ──────────────────────────────────────
+            if (resolvedBattle != null)
+            {
+                resolvedBattle.Initialize(statsA, statsB);
+                resolvedBattle.OnHPChanged.RemoveListener(HandleHPChanged);  // idempotent on rematch
+                resolvedBattle.OnHPChanged.AddListener(HandleHPChanged);
+                resolvedBattle.OnBattleEnd.RemoveListener(HandleBattleEnd);
+                resolvedBattle.OnBattleEnd.AddListener(HandleBattleEnd);
+            }
+
+            if (voiceRouter != null)
+            {
+                voiceRouter.Bind(resolvedBattle, localCasterIndex, movesForLocal);
+                Debug.Log($"[GameStateManager] Battle voice bound. caster={localCasterIndex} battle={(resolvedBattle != null ? "OK" : "NULL")} statsForLocal={(statsForLocal!=null?statsForLocal.displayName:"NULL")} moves.Length={(movesForLocal?.Length ?? -1)} firstMove={(movesForLocal != null && movesForLocal.Length>0 ? movesForLocal[0]?.displayName : "<none>")}");
+
+                // Force a clean mic state for combat — kills any wedged VAD
+                // session inherited from tutorial / ready-handshake teardown.
+                voiceRouter.SetMuted(false);
+                voiceRouter.SetOpenMicMode(true);
+                voiceRouter.RestartMic();
+
+                // Announce the local player's moves via TTS so they know what to call out.
+                var ann = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
+                if (ann != null && movesForLocal != null && movesForLocal.Length > 0)
+                {
+                    var moveNames = new System.Collections.Generic.List<string>();
+                    foreach (var m in movesForLocal) if (m != null) moveNames.Add(m.displayName);
+                    string list = string.Join(", ", moveNames);
+                    string monsterName = statsForLocal != null ? statsForLocal.displayName : "Your monster";
+                    ann.Say($"{monsterName} knows: {list}. Just shout a move name to attack.");
                 }
             }
             else
             {
-                Debug.LogWarning("[GameStateManager] BattleManager missing, battle will not start.");
+                Debug.LogError("[GameStateManager] voiceRouter SerializeField is null — voice attacks cannot work.");
             }
 
             // Lock the trainer's locomotion + spawn the head-locked battle

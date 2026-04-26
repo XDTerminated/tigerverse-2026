@@ -70,6 +70,36 @@ namespace Tigerverse.UI
                 _voice.OnMoveCast.AddListener(HandleMoveCast);
                 _moves = _voice.AvailableMoves;
             }
+
+            // Last-resort fallback: if for any reason the voice router has no
+            // moves bound at this exact moment (race, missing inspector ref,
+            // etc), pull 4 defaults from MoveCatalog directly so the wrist
+            // HUD is never empty / never shows "move 1 / move 2 / ...".
+            if (_moves == null || _moves.Length == 0)
+            {
+                var cat = MoveCatalog.Instance;
+                if (cat != null)
+                {
+                    var list = new System.Collections.Generic.List<MoveSO>();
+                    string[] defaults = { "Fireball", "Watergun", "Thunderbolt", "Iceshard" };
+                    foreach (var n in defaults)
+                    {
+                        var m = cat.Find(n);
+                        if (m != null) list.Add(m);
+                    }
+                    if (list.Count == 0 && cat.moves != null)
+                    {
+                        for (int i = 0; i < cat.moves.Length && list.Count < 4; i++)
+                            if (cat.moves[i] != null) list.Add(cat.moves[i]);
+                    }
+                    if (list.Count > 0)
+                    {
+                        _moves = list.ToArray();
+                        Debug.LogWarning($"[BattleHUD] Voice had no moves bound — using MoveCatalog defaults so the wrist HUD shows real names.");
+                    }
+                }
+            }
+
             RefreshMoves(_moves);
             FindAnchors();
         }

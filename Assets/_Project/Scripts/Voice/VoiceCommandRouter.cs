@@ -632,13 +632,24 @@ namespace Tigerverse.Voice
                     return;
                 }
 
+                // If battle ref is null, scrabble for one in the scene before
+                // giving up — covers the case where Bind was called pre-battle
+                // (during practice) with a null battle and the rebind for
+                // combat hasn't landed yet.
+                if (battle == null)
+                {
+                    battle = FindFirstObjectByType<BattleManager>();
+                    if (battle != null)
+                        Debug.LogWarning($"[Voice] battle ref was null but found '{battle.name}' in scene — using it for SubmitMove.");
+                }
+
                 if (battle != null)
                 {
                     battle.SubmitMove(bestMove, casterIndex);
                 }
                 else
                 {
-                    Debug.LogWarning($"[Voice] Match for '{bestMove.displayName}' but battle ref is NULL — damage cannot be applied. Check VoiceCommandRouter.Bind() was called with a real BattleManager.");
+                    Debug.LogWarning($"[Voice] Match for '{bestMove.displayName}' but no BattleManager found in scene — damage cannot be applied.");
                 }
                 _nextCastAt[bestMove] = Time.time + Mathf.Max(0f, bestMove.cooldownSeconds);
                 OnMoveCast?.Invoke(bestMove);
