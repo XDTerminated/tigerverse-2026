@@ -26,6 +26,7 @@ namespace Tigerverse.UI
             targetCurrent = current;
             targetMax = max;
             labelText?.SetText($"{current}/{max}");
+            if (!gameObject.activeSelf) gameObject.SetActive(true);
         }
 
         public void SetElementColor(ElementType element)
