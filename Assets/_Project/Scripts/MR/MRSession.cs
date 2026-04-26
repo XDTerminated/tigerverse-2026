@@ -39,6 +39,19 @@ namespace Tigerverse.MR
         public static void Enter(Transform arenaAnchor)
         {
             if (InMR) return;
+
+            // Flat-screen / editor-without-HMD guard. Passthrough requires an
+            // actual XR display subsystem to be running — without one, the
+            // DisableOtherRigs() pass below would kill the only rendering
+            // camera in the scene and the player would just see Unity's
+            // "No cameras rendering" placeholder. Skip cleanly so laptop
+            // dev testing still works.
+            if (!UnityEngine.XR.XRSettings.isDeviceActive)
+            {
+                Debug.Log("[MRSession] Enter() skipped — no active XR display (flat-screen / editor without HMD).");
+                return;
+            }
+
             ArenaAnchor = arenaAnchor;
 
 #if UNITY_XR_ARFOUNDATION || UNITY_XR_META_OPENXR
