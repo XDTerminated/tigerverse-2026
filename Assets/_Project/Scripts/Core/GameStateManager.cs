@@ -99,22 +99,25 @@ namespace Tigerverse.Core
         {
             SetState(AppState.Lobby);
 
+            // HTTP session polling (which drives the eggs / tutorial / hatch)
+            // is independent of Photon. Kick it off immediately so the player
+            // sees their own egg appear the moment the website registers
+            // their drawing — even if Photon connect is slow, fails, or
+            // hasn't been configured (empty photonAppId in BackendConfig).
+            BeginDrawWait();
+
             if (runner == null)
             {
-                Debug.LogWarning("[GameStateManager] SessionRunner missing — cannot host.");
+                Debug.LogWarning("[GameStateManager] SessionRunner missing — Photon room won't host, but HTTP polling continues.");
                 yield break;
             }
 
             Task<bool> t = runner.CreateRoom(sessionCode);
             yield return new WaitUntil(() => t.IsCompleted);
 
-            if (t.Result)
+            if (!t.Result)
             {
-                BeginDrawWait();
-            }
-            else
-            {
-                Debug.LogWarning("[GameStateManager] CreateRoom failed.");
+                Debug.LogWarning("[GameStateManager] CreateRoom failed — HTTP polling continues anyway.");
             }
         }
 
@@ -122,22 +125,21 @@ namespace Tigerverse.Core
         {
             SetState(AppState.Lobby);
 
+            // Same reasoning as HostFlow: don't gate the HTTP poll on Photon.
+            BeginDrawWait();
+
             if (runner == null)
             {
-                Debug.LogWarning("[GameStateManager] SessionRunner missing — cannot join.");
+                Debug.LogWarning("[GameStateManager] SessionRunner missing — cannot join Photon room, but HTTP polling continues.");
                 yield break;
             }
 
             Task<bool> t = runner.JoinRoom(sessionCode);
             yield return new WaitUntil(() => t.IsCompleted);
 
-            if (t.Result)
+            if (!t.Result)
             {
-                BeginDrawWait();
-            }
-            else
-            {
-                Debug.LogWarning("[GameStateManager] JoinRoom failed.");
+                Debug.LogWarning("[GameStateManager] JoinRoom failed — HTTP polling continues anyway.");
             }
         }
 
