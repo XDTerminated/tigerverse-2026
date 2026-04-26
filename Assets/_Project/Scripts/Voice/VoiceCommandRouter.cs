@@ -27,6 +27,9 @@ namespace Tigerverse.Voice
         [SerializeField] private string preferredMicSubstring = "";
 
         private MoveSO[]   availableMoves;
+
+        /// <summary>The local player's currently-bound moveset, or null if no battle is active. Read-only view for HUDs.</summary>
+        public MoveSO[] AvailableMoves => availableMoves;
         private bool       isRecording;
         private bool       triggerWasPressed;
         private bool       spaceWasPressed;
@@ -491,6 +494,15 @@ namespace Tigerverse.Voice
 
             if (bestMove != null && (bestSubstring || bestScore < matchThreshold))
             {
+                // Battle control mode gate: only the trainer issues moves.
+                // While the player is in Scribble mode (steering their
+                // monster around), voice commands are intentionally ignored.
+                var modeMgr = Tigerverse.Combat.BattleControlModeManager.Instance;
+                if (modeMgr != null && !modeMgr.CanAttack)
+                {
+                    Debug.Log($"[VoiceCommandRouter] Move '{bestMove.displayName}' ignored — switch to Trainer mode (press A) to attack.");
+                    return;
+                }
                 if (battle != null) battle.SubmitMove(bestMove, casterIndex);
                 OnMoveCast?.Invoke(bestMove);
             }
