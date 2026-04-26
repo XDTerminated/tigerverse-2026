@@ -97,9 +97,32 @@ namespace Tigerverse.Drawing
                 }
                 else
                 {
+                    // URP/Lit fallback path. The stylized shader was missing
+                    // — most likely it failed to compile, or wasn't included
+                    // in the build. Use the paper texture as the base map
+                    // and tint over it, so the monster still reads as
+                    // paper-craft instead of a flat plastic blob. The
+                    // shader-based path is still preferred when available
+                    // because it does triplanar projection + drawing wrap.
                     mat = new Material(litShader != null ? litShader : Shader.Find("Standard"));
-                    mat.SetColor("_BaseColor", tint);
-                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+                    Color paperTint = new Color(
+                        Mathf.Lerp(0.97f, tint.r, 0.5f),
+                        Mathf.Lerp(0.95f, tint.g, 0.5f),
+                        Mathf.Lerp(0.91f, tint.b, 0.5f),
+                        1f);
+                    if (paperColor != null)
+                    {
+                        if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", paperColor);
+                        if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", paperColor);
+                    }
+                    if (paperNormal != null)
+                    {
+                        if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", paperNormal);
+                        if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", paperNormal);
+                        mat.EnableKeyword("_NORMALMAP");
+                    }
+                    mat.SetColor("_BaseColor", paperTint);
+                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", paperTint);
                     // Match the matte look of DrawingStylized on the URP/Lit
                     // fallback path so the model never gains a shiny ball
                     // highlight when our custom shader is missing.

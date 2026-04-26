@@ -119,7 +119,17 @@ namespace Tigerverse.UI
             }
         }
 
-        public void Stop() { _stopRequested = true; }
+        public void Stop()
+        {
+            if (_stopRequested) return;
+            _stopRequested = true;
+            // Tear the whole tutorial GameObject down on Stop so the
+            // Professor, his subtitle, the practice dummy, the borrowed
+            // scribble, and any spawned FX all disappear when the egg
+            // hands off to the hatch sequence. Without this, the
+            // Professor would float next to the hatched monster forever.
+            if (gameObject != null) Destroy(gameObject);
+        }
 
         // ─── Scene build ────────────────────────────────────────────────
         private void BuildScene()
