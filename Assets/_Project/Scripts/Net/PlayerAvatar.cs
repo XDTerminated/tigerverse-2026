@@ -79,6 +79,20 @@ namespace Tigerverse.Net
                 // from the networked positions.
                 var bodyGo = new GameObject("PaperHumanoidBody");
                 bodyGo.transform.SetParent(transform, worldPositionStays: false);
+                // PaperHumanoid will build its own head sphere + face quad
+                // parented to headVisual, so we need headVisual to be a clean
+                // anchor: identity scale (so child scales aren't squashed)
+                // and its own mesh hidden (so the old prefab cube doesn't
+                // render through the new sphere). The PaperHumanoid call has
+                // to come AFTER these resets or its EnsureHead would inherit
+                // the wrong scale when it runs in the next LateUpdate.
+                if (headVisual != null)
+                {
+                    headVisual.localScale = Vector3.one;
+                    var headRend = headVisual.GetComponent<MeshRenderer>();
+                    if (headRend != null) headRend.enabled = false;
+                }
+
                 var humanoid = bodyGo.AddComponent<PaperHumanoid>();
                 humanoid.headSrc      = headVisual;
                 humanoid.leftHandSrc  = leftHandVisual;
@@ -86,28 +100,6 @@ namespace Tigerverse.Net
                 humanoid.SetBodyColor(tint, accent);
                 // PlayerId is 0-based; show 1-based slot in the floating tag.
                 humanoid.SetDisplayName($"Player {pid + 1}");
-
-                // Replace the head cube with a sphere so it looks like a head.
-                if (headVisual != null)
-                {
-                    var headRend = headVisual.GetComponent<MeshRenderer>();
-                    var headMf   = headVisual.GetComponent<MeshFilter>();
-                    if (headMf != null)
-                    {
-                        // Steal the unity primitive sphere mesh.
-                        var primSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                        var sphereMesh = primSphere.GetComponent<MeshFilter>().sharedMesh;
-                        DestroyImmediate(primSphere);
-                        headMf.sharedMesh = sphereMesh;
-                        headVisual.localScale = Vector3.one * 0.22f;
-                    }
-                    if (headRend != null && headRend.sharedMaterial != null)
-                    {
-                        var headMat = headRend.material; // instance for this avatar
-                        if (headMat.HasProperty("_BaseColor")) headMat.SetColor("_BaseColor", tint);
-                        else headMat.color = tint;
-                    }
-                }
             }
         }
 

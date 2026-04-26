@@ -58,11 +58,11 @@ namespace Tigerverse.UI
             _baseHeadRot   = _head.localRotation;
 
             // Wizard hat, cone-ish (use a cylinder with a tapered scale to fake a cone).
-            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.20f, 0), localScale: new Vector3(0.20f, 0.22f, 0.20f));
+            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.32f, 0), localScale: new Vector3(0.28f, 0.30f, 0.28f));
             _hat.SetParent(_head, worldPositionStays: true);
 
             // Hat brim (flat cylinder underneath).
-            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 1.06f, 0), localScale: new Vector3(0.36f, 0.012f, 0.36f));
+            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 1.08f, 0), localScale: new Vector3(0.50f, 0.014f, 0.50f));
             brim.SetParent(_head, worldPositionStays: true);
 
             // Face: hand-drawn doodle face on a quad pinned to the front of
@@ -151,14 +151,14 @@ namespace Tigerverse.UI
             var col = quad.GetComponent<Collider>();
             if (col != null) { if (Application.isPlaying) Destroy(col); else DestroyImmediate(col); }
             quad.transform.SetParent(head, worldPositionStays: false);
-            // Sphere has unit radius before scale, so -0.51f sits just in front
-            // of the front face. Quad lies flat in XY pointing +Z so it's
-            // already facing outward from the head's local front.
+            // The original eyes/mouth were at head-local -Z, so this project's
+            // convention treats -Z as the head's "front". A default Quad mesh
+            // lies in XY with normal +Z, so when placed at z=-0.51 the visible
+            // surface naturally faces back toward +Z (the camera looking at
+            // the professor from behind it in head-local terms). No rotation
+            // needed; an earlier 180° spin had it pointing backwards.
             quad.transform.localPosition = new Vector3(0f, 0.05f, -0.51f);
-            quad.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            // Footprint matches the old eye+mouth extent (~0.10 wide × ~0.13
-            // tall in head-local units). Flip X via negative scale because
-            // the quad is now rotated 180 on Y.
+            quad.transform.localRotation = Quaternion.identity;
             quad.transform.localScale = new Vector3(0.42f, 0.5f, 1f);
             quad.GetComponent<Renderer>().sharedMaterial = MakeFaceMaterial();
         }
@@ -227,12 +227,17 @@ namespace Tigerverse.UI
                 float k = Mathf.Clamp01(speakElapsed / speakDuration);
                 // Smooth in-out window so we don't snap on stop.
                 float window = Mathf.Sin(k * Mathf.PI);
-                float beat = Mathf.Sin(speakElapsed * 6f * Mathf.PI) * window;
+                // Slowed from 6Hz to ~1.6Hz so the gestures read as
+                // calm/lecturing instead of frantic flailing.
+                float beat = Mathf.Sin(speakElapsed * 1.6f * Mathf.PI) * window;
 
-                _rightArm.localRotation = _baseRightArmRot * Quaternion.Euler(beat * speakArmWaveDeg, 0, 0);
-                _leftArm.localRotation  = _baseLeftArmRot  * Quaternion.Euler(beat * speakArmWaveDeg * 0.5f, 0, 0);
+                // Halve the wave amplitude on top of the slower beat for an
+                // even calmer overall motion.
+                float amp = speakArmWaveDeg * 0.5f;
+                _rightArm.localRotation = _baseRightArmRot * Quaternion.Euler(beat * amp, 0, 0);
+                _leftArm.localRotation  = _baseLeftArmRot  * Quaternion.Euler(beat * amp * 0.5f, 0, 0);
 
-                _head.localRotation = _baseHeadRot * Quaternion.Euler(Mathf.Abs(beat) * speakHeadNodDeg, 0, 0);
+                _head.localRotation = _baseHeadRot * Quaternion.Euler(Mathf.Abs(beat) * speakHeadNodDeg * 0.5f, 0, 0);
             }
             else if (_leftArm != null && _rightArm != null && _head != null)
             {
