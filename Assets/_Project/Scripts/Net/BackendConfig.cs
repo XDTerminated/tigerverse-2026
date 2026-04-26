@@ -5,7 +5,7 @@ namespace Tigerverse.Net
     [CreateAssetMenu(fileName = "BackendConfig", menuName = "Tigerverse/Backend Config")]
     public class BackendConfig : ScriptableObject
     {
-        public string backendBaseUrl = "https://tigerverse.vercel.app";
+        public string backendBaseUrl = "https://tigerverse-2026.vercel.app";
         public bool useMock = false;
 
         [Tooltip("Client-side ElevenLabs key for Scribe STT and TTS announcer")]
@@ -38,7 +38,7 @@ namespace Tigerverse.Net
             {
                 Debug.LogWarning("[BackendConfig] Resources/BackendConfig.asset not found. Returning a default in-memory instance.");
                 _cache = ScriptableObject.CreateInstance<BackendConfig>();
-                _cache.backendBaseUrl = "https://tigerverse.vercel.app";
+                _cache.backendBaseUrl = "https://tigerverse-2026.vercel.app";
                 _cache.useMock = false;
                 _cache.elevenLabsApiKey = "";
                 _cache.elevenLabsTtsVoiceId = "";
