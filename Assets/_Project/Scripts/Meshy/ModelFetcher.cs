@@ -297,18 +297,22 @@ namespace Tigerverse.Meshy
             // Optional: flat planar projection (legacy DrawingProjector) for the original "sticker" look.
             try
             {
-                if (drawingTex != null)
+                // Apply paper-craft materials unconditionally. Without this,
+                // a missing drawingTex (failed fetch, slow upload, or empty
+                // imageUrl) left Meshy's native peachy/skin material on the
+                // GLB, making monsters look nothing like paper. DrawingColorize
+                // handles null drawingTex internally now: paper textures are
+                // applied either way, the doodle watermark just contributes
+                // nothing when there's no drawing.
+                if (applyDrawingColorize)
                 {
-                    if (applyDrawingColorize)
-                    {
-                        DrawingColorize.Apply(container, drawingTex, drawingDetailStrength);
-                    }
-                    else if (applyDrawingProjection)
-                    {
-                        var projector = container.GetComponent<DrawingProjector>();
-                        if (projector == null) projector = container.AddComponent<DrawingProjector>();
-                        projector.ApplyDrawing(drawingTex);
-                    }
+                    DrawingColorize.Apply(container, drawingTex, drawingDetailStrength);
+                }
+                else if (applyDrawingProjection && drawingTex != null)
+                {
+                    var projector = container.GetComponent<DrawingProjector>();
+                    if (projector == null) projector = container.AddComponent<DrawingProjector>();
+                    projector.ApplyDrawing(drawingTex);
                 }
             }
             catch (Exception e)

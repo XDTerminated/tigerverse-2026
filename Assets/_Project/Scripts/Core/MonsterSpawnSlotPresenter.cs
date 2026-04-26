@@ -44,6 +44,12 @@ namespace Tigerverse.Core
         private float _spawnTime;
         private string _lastName;
         private bool   _hatchHandedOff;
+        // Tracks whether SpawnEgg() has run for this slot. Without this,
+        // once the hatch sequence destroys the egg GameObject, _egg goes
+        // back to Unity's null sentinel and the spawn check below fires
+        // again — creating a fresh egg on top of the just-revealed
+        // monster, then again, forever.
+        private bool   _eggSpawned;
 
         private void Awake()
         {
@@ -82,8 +88,9 @@ namespace Tigerverse.Core
                           || !string.IsNullOrEmpty(data.name)
                           || (!string.IsNullOrEmpty(data.status) && data.status != "queued");
 
-            if (_egg == null && started)
+            if (!_eggSpawned && started)
             {
+                _eggSpawned = true;
                 SpawnEgg(data);
             }
 
