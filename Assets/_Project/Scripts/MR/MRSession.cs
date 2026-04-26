@@ -42,49 +42,54 @@ namespace Tigerverse.MR
             ArenaAnchor = arenaAnchor;
 
 #if UNITY_XR_ARFOUNDATION || UNITY_XR_META_OPENXR
-            // Without the Meta-OpenXR package present we have no real
-            // passthrough source, so flipping the skybox + LobbyEnv off
-            // would leave the player staring at a black void instead of
-            // their living room. Skip the entire MR transition in that
-            // build — combat just continues in the existing VR lobby. The
-            // package is OFF for the demo build because v1.0.3's native
-            // plugin stack-overflows on Quest startup; re-add it (and
-            // remove the guard) once a stable version ships.
-            var cam = Camera.main;
-            if (cam != null)
+            // BattleMR is loaded additively, so the original Title-scene
+            // XR rig + Main Camera are STILL ALIVE. Both cameras render
+            // every frame, and the lobby camera (opaque background, no
+            // ARCameraBackground) paints over the AR camera's passthrough
+            // every frame → screen looks black. Solution: completely
+            // disable the original rig + camera before flipping into MR.
+            //
+            // We disable instead of destroy so Exit() could put it back if
+            // we ever wanted to drop out of passthrough mid-session.
+            DisableOtherRigs();
+
+            // The AR camera in BattleMR is the camera tagged MainCamera
+            // *now* (after the original rig was disabled). Resolve it
+            // fresh — Camera.main caches across frames sometimes.
+            Camera arCam = ResolveARCamera();
+            if (arCam != null)
             {
-                _savedClearFlags = cam.clearFlags;
-                _savedBackground = cam.backgroundColor;
-                cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+                _savedClearFlags = arCam.clearFlags;
+                _savedBackground = arCam.backgroundColor;
+                arCam.clearFlags = CameraClearFlags.SolidColor;
+                arCam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+                // Force-enable the AR Camera Background renderer. AR
+                // Foundation only flips this on if the subsystem started
+                // cleanly; sometimes you have to nudge it.
+                var bg = arCam.GetComponent<ARCameraBackground>();
+                if (bg != null) bg.enabled = true;
+                var cm = arCam.GetComponent<ARCameraManager>();
+                if (cm != null) cm.enabled = true;
             }
 
             _savedSkyboxState = RenderSettings.skybox != null;
-            var oldSkybox = RenderSettings.skybox;
             RenderSettings.skybox = null;
-            if (oldSkybox != null) Resources.UnloadAsset(oldSkybox);
 
             _savedLobbyEnv = GameObject.Find("LobbyEnv");
             if (_savedLobbyEnv != null) _savedLobbyEnv.SetActive(false);
 
-            // The Meta-OpenXR package exposes passthrough through AR
-            // Foundation's ARCameraManager + ARCameraBackground. Our rig
-            // isn't an AR rig, so we add those components at runtime when
-            // entering MR. (No-op if they're already present.)
-            if (cam != null)
+            // Make sure an ARSession exists and is enabled. The session
+            // baked into BattleMR usually covers this, but if MRSession
+            // was called outside the scene (e.g. dev test), spawn one.
+            var arSession = Object.FindFirstObjectByType<ARSession>();
+            if (arSession == null)
             {
-                if (cam.GetComponent<ARCameraManager>() == null)
-                    cam.gameObject.AddComponent<ARCameraManager>();
-                if (cam.GetComponent<ARCameraBackground>() == null)
-                    cam.gameObject.AddComponent<ARCameraBackground>();
+                var sessGo = new GameObject("ARSession (Runtime)", typeof(ARSession), typeof(ARInputManager));
+                Object.DontDestroyOnLoad(sessGo);
+                arSession = sessGo.GetComponent<ARSession>();
             }
-            // ARSession singleton — required by AR Foundation to actually
-            // start any subsystem.
-            if (Object.FindFirstObjectByType<ARSession>() == null)
-            {
-                var sess = new GameObject("ARSession", typeof(ARSession), typeof(ARInputManager));
-                Object.DontDestroyOnLoad(sess);
-            }
+            if (arSession != null) arSession.enabled = true;
 
             InMR = true;
             Debug.Log($"[MRSession] Passthrough ON. ArenaAnchor at {(arenaAnchor != null ? arenaAnchor.position.ToString("F2") : "null")}.");
@@ -92,6 +97,39 @@ namespace Tigerverse.MR
             Debug.Log("[MRSession] Enter() called without Meta-OpenXR package — staying in VR (no passthrough source available).");
 #endif
         }
+
+#if UNITY_XR_ARFOUNDATION || UNITY_XR_META_OPENXR
+        // Disable every camera + XR rig that ISN'T inside BattleMR so the
+        // AR camera is the only one rendering. Without this the lobby
+        // camera draws on top and you see black instead of passthrough.
+        private static void DisableOtherRigs()
+        {
+            var mrScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName("BattleMR");
+            foreach (var cam in Object.FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (cam == null) continue;
+                if (mrScene.IsValid() && cam.gameObject.scene == mrScene) continue;
+                cam.enabled = false;
+            }
+            foreach (var origin in Object.FindObjectsByType<Unity.XR.CoreUtils.XROrigin>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (origin == null) continue;
+                if (mrScene.IsValid() && origin.gameObject.scene == mrScene) continue;
+                origin.gameObject.SetActive(false);
+            }
+        }
+
+        private static Camera ResolveARCamera()
+        {
+            // Prefer the camera that has ARCameraManager attached.
+            foreach (var cm in Object.FindObjectsByType<ARCameraManager>(FindObjectsSortMode.None))
+            {
+                var c = cm.GetComponent<Camera>();
+                if (c != null) return c;
+            }
+            return Camera.main;
+        }
+#endif
 
         /// <summary>
         /// Drop back to VR — restore camera/skybox/LobbyEnv. Safe to call

@@ -6,6 +6,7 @@ using Tigerverse.Net;
 using Tigerverse.UI;
 using Tigerverse.Voice;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.XR;
 
 namespace Tigerverse.Combat
@@ -294,9 +295,9 @@ namespace Tigerverse.Combat
 
         private void EnterMRWithBumpAnchor()
         {
-            // Build a world-space anchor at the bump midpoint, snapped to
-            // floor (Y=0). If we never captured a real bump (button-bypass),
-            // anchor 1.5 m forward of the camera as a sane default.
+            // Compute the world-space arena anchor: bump midpoint snapped
+            // to floor (Y=0). Bypass-button fallback: 1.5 m forward of the
+            // camera at floor height.
             Vector3 anchorPos;
             if (_bumpMidpointValid)
             {
@@ -312,22 +313,54 @@ namespace Tigerverse.Combat
                 anchorPos = new Vector3(head.x, 0f, head.z) + fwd * 1.5f;
             }
 
-            var anchorGo = new GameObject("BattleArenaAnchor");
+            // Load the dedicated MR scene additively. Doing the scene load
+            // (rather than mutating the lobby in place) gives the AR
+            // subsystem a pre-wired ARSession + ARCameraManager from
+            // frame 1 — which is what the Meta-OpenXR plugin expects and
+            // is the workaround for the startup-recursion crash we hit on
+            // 1.0.x. The Photon Fusion runner lives on Bootstrap with
+            // DontDestroyOnLoad, so the network session survives.
+            StartCoroutine(LoadMRSceneAndEnter(anchorPos));
+        }
+
+        private IEnumerator LoadMRSceneAndEnter(Vector3 anchorPos)
+        {
+            const string mrSceneName = "BattleMR";
+            var op = SceneManager.LoadSceneAsync(mrSceneName, LoadSceneMode.Additive);
+            if (op == null)
+            {
+                Debug.LogError($"[ReadyHandshake] '{mrSceneName}' not in Build Settings. Run 'Tigerverse → MR → Create / Rebuild BattleMR Scene' once, then add it to File → Build Settings.");
+                yield break;
+            }
+            yield return op;
+
+            // Make BattleMR the active scene so newly-instantiated objects
+            // (monster pivots, anchor) live there.
+            var mrScene = SceneManager.GetSceneByName(mrSceneName);
+            if (mrScene.IsValid()) SceneManager.SetActiveScene(mrScene);
+
+            // Reposition the pre-wired BattleArenaAnchor in the MR scene
+            // to the bump midpoint, then move the spawn pivots onto it.
+            var anchorGo = GameObject.Find("BattleArenaAnchor");
+            if (anchorGo == null)
+            {
+                anchorGo = new GameObject("BattleArenaAnchor");
+            }
             anchorGo.transform.position = anchorPos;
             anchorGo.transform.rotation = Quaternion.identity;
 
-            // Reparent the existing monster spawn pivots under the anchor so
-            // the rest of the combat code (which positions monsters at
-            // those pivots) keeps working — they just appear in the room
-            // relative to the bump point instead of the lobby world origin.
             var pivotA = GameObject.Find("MonsterSpawnPivotA");
             var pivotB = GameObject.Find("MonsterSpawnPivotB");
-            if (pivotA != null) pivotA.transform.SetParent(anchorGo.transform, worldPositionStays: false);
-            if (pivotB != null) pivotB.transform.SetParent(anchorGo.transform, worldPositionStays: false);
-            // Spread the two pivots ~0.6 m on either side of the anchor so
-            // both monsters have visible breathing room on the floor.
-            if (pivotA != null) pivotA.transform.localPosition = new Vector3(-0.6f, 0f, 0f);
-            if (pivotB != null) pivotB.transform.localPosition = new Vector3( 0.6f, 0f, 0f);
+            if (pivotA != null)
+            {
+                pivotA.transform.SetParent(anchorGo.transform, worldPositionStays: false);
+                pivotA.transform.localPosition = new Vector3(-0.6f, 0f, 0f);
+            }
+            if (pivotB != null)
+            {
+                pivotB.transform.SetParent(anchorGo.transform, worldPositionStays: false);
+                pivotB.transform.localPosition = new Vector3(0.6f, 0f, 0f);
+            }
 
             MRSession.Enter(anchorGo.transform);
         }
