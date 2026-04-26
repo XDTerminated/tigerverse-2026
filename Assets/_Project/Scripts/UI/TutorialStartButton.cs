@@ -10,8 +10,9 @@ namespace Tigerverse.UI
     /// <summary>
     /// Paper-craft 3D "START TUTORIAL" button that hovers next to the
     /// player's egg. Press by either:
-    ///   - Touching with a VR controller (proximity poke), or
+    ///   - Hovering with a VR controller and squeezing the TRIGGER, or
     ///   - Clicking it in the Game view with the mouse (editor / flat).
+    /// Proximity-poke is intentionally disabled to avoid accidental starts.
     /// Fires <see cref="OnPressed"/> exactly once, then plays a press-down
     /// animation and destroys itself.
     /// </summary>
@@ -32,6 +33,7 @@ namespace Tigerverse.UI
         private Transform _leftCtrl, _rightCtrl;
         private bool      _leftInside, _rightInside;
         private bool      _leftHovering, _rightHovering;
+        private bool      _leftTrigWas, _rightTrigWas;
         private bool      _consumed;
         private Camera    _cam;
         private TextMeshPro _labelTmp;
@@ -155,12 +157,23 @@ namespace Tigerverse.UI
             float scaleBoost = _hoverState ? 1.18f : 1.0f;
             _backing.transform.localScale = new Vector3(0.46f * pulse * scaleBoost, 0.18f * pulse * scaleBoost, 0.04f);
 
-            if (CtrlEnter(_leftCtrl,  ref _leftInside)
-             || CtrlEnter(_rightCtrl, ref _rightInside))
+            // Trigger-press while hovering = confirm. Proximity poke
+            // alone no longer fires (avoids accidental starts when the
+            // player happens to wave their hand near the egg).
+            if (_leftHovering  && TriggerPressEdge(XRNode.LeftHand,  ref _leftTrigWas))
             {
                 Press();
                 return;
             }
+            if (_rightHovering && TriggerPressEdge(XRNode.RightHand, ref _rightTrigWas))
+            {
+                Press();
+                return;
+            }
+            // Reset edge state when not hovering so a held trigger doesn't
+            // immediately fire the moment the player drifts into hover range.
+            if (!_leftHovering)  _leftTrigWas  = true;
+            if (!_rightHovering) _rightTrigWas = true;
 
             // Mouse click via Input System.
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
@@ -182,14 +195,25 @@ namespace Tigerverse.UI
             }
         }
 
-        private bool CtrlEnter(Transform ctrl, ref bool inside)
+        // Returns true on the press-down edge of the trigger button.
+        // wasPressed is updated in place so the next frame compares correctly.
+        private static bool TriggerPressEdge(XRNode node, ref bool wasPressed)
         {
-            if (ctrl == null) return false;
-            float dist = Vector3.Distance(ctrl.position, transform.position);
-            bool nowInside = dist < pokeRadius;
-            bool justEntered = nowInside && !inside;
-            inside = nowInside;
-            return justEntered;
+            var dev = InputDevices.GetDeviceAtXRNode(node);
+            bool isPressed = false;
+            if (dev.isValid)
+            {
+                if (!dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out isPressed))
+                {
+                    // Fallback: analog trigger axis above 0.5.
+                    float axis = 0f;
+                    dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out axis);
+                    isPressed = axis > 0.5f;
+                }
+            }
+            bool edge = isPressed && !wasPressed;
+            wasPressed = isPressed;
+            return edge;
         }
 
         private void CheckHover(Transform ctrl, ref bool wasHovering, XRNode node, ref bool nowHover)
