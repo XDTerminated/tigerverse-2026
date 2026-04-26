@@ -5,12 +5,10 @@ namespace Tigerverse.Net
 {
     public static class RoomCodeGenerator
     {
-        // Drop ambiguous characters: 0/O, 1/I/L
-        public const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        // Full A-Z + 0-9 alphabet. Ambiguous chars (0/O, 1/I/L) are allowed
+        // because the on-screen QWERTY keyboard exposes all of them.
+        public const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         public const int CodeLength = 4;
-
-        // NOTE: 'L' is intentionally retained per task spec; only 0/O/1/I are dropped.
-        // (Spec says alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` exactly.)
 
         private static readonly System.Random _rng = new System.Random(unchecked((int)DateTime.UtcNow.Ticks));
 

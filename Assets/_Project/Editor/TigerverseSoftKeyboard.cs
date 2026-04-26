@@ -10,8 +10,17 @@ namespace Tigerverse.EditorTools
 {
     public static class TigerverseSoftKeyboard
     {
-        // Codes use this alphabet (drops ambiguous chars). Same as RoomCodeGenerator.Alphabet.
-        private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        // Codes use this alphabet. Matches RoomCodeGenerator.Alphabet (full A-Z + 0-9).
+        private const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+        // Full QWERTY layout, top → bottom.
+        private static readonly string[] QwertyRows =
+        {
+            "1234567890",    // 10 numeric keys (top)
+            "QWERTYUIOP",    // 10 keys
+            "ASDFGHJKL",     // 9 keys
+            "ZXCVBNM",       // 7 keys
+        };
 
         [MenuItem("Tigerverse/UI -> Add Soft Keyboard to Title")]
         public static void Apply()
@@ -31,16 +40,17 @@ namespace Tigerverse.EditorTools
             var oldKb = GameObject.Find("SoftKeyboard");
             if (oldKb != null) Object.DestroyImmediate(oldKb);
 
-            // 8 cols x (4 letter rows + 1 action row). Same gap/key sizes as
-            // the live layout so re-running the scaffold matches what's on
-            // screen instead of resetting it to the old cramped grid.
-            int cols = 8;
-            int letterRows = 4;
             float keyW = 60f, keyH = 56f, gap = 6f;
-            int totalRows = letterRows + 1;
+            int letterRows = QwertyRows.Length;
+            int totalRows  = letterRows + 1; // +1 for action row
             float rowStride = keyH + gap;
             float colStride = keyW + gap;
-            float kbWidth  = cols * keyW + (cols - 1) * gap;
+
+            // Width is determined by the widest row (ASDFGHJKL = 9 keys).
+            int maxCols = 0;
+            for (int r = 0; r < QwertyRows.Length; r++)
+                if (QwertyRows[r].Length > maxCols) maxCols = QwertyRows[r].Length;
+            float kbWidth  = maxCols * keyW + (maxCols - 1) * gap;
             float kbHeight = totalRows * keyH + (totalRows - 1) * gap;
 
             // Container.
@@ -48,7 +58,7 @@ namespace Tigerverse.EditorTools
             kbGo.transform.SetParent(canvas.transform, false);
             var kbRT = kbGo.GetComponent<RectTransform>();
             kbRT.sizeDelta = new Vector2(kbWidth + 12, kbHeight + 12);
-            kbRT.anchoredPosition = new Vector2(0, -210); // below the input column
+            kbRT.anchoredPosition = new Vector2(0, -210);
             var kb = kbGo.GetComponent<SoftKeyboard>();
             var inputField = input.GetComponent<TMP_InputField>();
             kb.SetTarget(inputField);
@@ -57,29 +67,35 @@ namespace Tigerverse.EditorTools
             kbSo.FindProperty("maxLength").intValue = 4;
             kbSo.ApplyModifiedPropertiesWithoutUndo();
 
-            float startX = -((cols - 1) * colStride) * 0.5f;
-            float startY =  ((totalRows - 1) * rowStride) * 0.5f;
+            float startY = ((totalRows - 1) * rowStride) * 0.5f;
+            int totalKeys = 0;
 
-            for (int i = 0; i < Alphabet.Length; i++)
+            for (int row = 0; row < QwertyRows.Length; row++)
             {
-                int row = i / cols;
-                int col = i % cols;
-                string ch = Alphabet[i].ToString();
-                var key = MakeKey(kbGo.transform, ch, ch);
-                var rt = key.GetComponent<RectTransform>();
-                rt.sizeDelta = new Vector2(keyW, keyH);
-                rt.anchoredPosition = new Vector2(startX + col * colStride,
-                                                  startY - row * rowStride);
-                var keyComp = key.AddComponent<SoftKeyboardKey>();
-                keyComp.character = ch;
-                keyComp.keyboard = kb;
-                keyComp.action = SoftKeyboardKey.KeyAction.Append;
+                string rowStr = QwertyRows[row];
+                int cols = rowStr.Length;
+                float rowWidth = cols * keyW + (cols - 1) * gap;
+                float rowStartX = -(rowWidth - keyW) * 0.5f; // each row centered
+
+                for (int col = 0; col < cols; col++)
+                {
+                    string ch = rowStr[col].ToString();
+                    var key = MakeKey(kbGo.transform, ch, ch);
+                    var rt = key.GetComponent<RectTransform>();
+                    rt.sizeDelta = new Vector2(keyW, keyH);
+                    rt.anchoredPosition = new Vector2(rowStartX + col * colStride,
+                                                      startY - row * rowStride);
+                    var keyComp = key.AddComponent<SoftKeyboardKey>();
+                    keyComp.character = ch;
+                    keyComp.keyboard = kb;
+                    keyComp.action = SoftKeyboardKey.KeyAction.Append;
+                    totalKeys++;
+                }
             }
 
-            // Action row sits as the 5th grid row, one row-stride below the
-            // last letter row, so it visually belongs to the keyboard panel.
-            float halfW = 4 * keyW + 3 * gap;
-            float halfCenterX = 2 * colStride; // center of cols 4-7 in the 8-col grid
+            // Action row: two big half-width buttons (Clear | Backspace).
+            float halfW = (kbWidth - gap) * 0.5f;
+            float halfCenterX = (halfW + gap) * 0.5f;
             float bottomRowY = startY - letterRows * rowStride;
 
             var clear = MakeKey(kbGo.transform, "Clear", "CLEAR");
@@ -102,7 +118,7 @@ namespace Tigerverse.EditorTools
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            Debug.Log("[Tigerverse] Soft keyboard added below CodeInput. 32 letter keys + Clear + Backspace.");
+            Debug.Log($"[Tigerverse] QWERTY soft keyboard added below CodeInput. {totalKeys} keys (digits + QWERTY) + Clear + Backspace.");
         }
 
         private static GameObject MakeKey(Transform parent, string name, string label)
