@@ -193,7 +193,26 @@ namespace Tigerverse.Core
             }
 
             StartCoroutine(apiClient.PollUntilReady(sessionCode, OnPollUpdate, OnBothPlayersReady));
+
+            // Flip into passthrough MR for the duration of the draw-wait.
+            // The player can SEE their laptop / phone through the headset
+            // and draw without removing it — which also keeps the proximity
+            // sensor "face present" so Photon never disconnects. We flip
+            // BACK to VR the moment OnPollUpdate sees the local player's
+            // imageUrl appear (their drawing has been submitted).
+#if UNITY_XR_META_OPENXR
+            if (!Tigerverse.MR.MRSession.InMR)
+            {
+                Tigerverse.MR.MRSession.Enter(null);
+                Debug.Log("[GameStateManager] Lobby passthrough MR enabled — player can see their laptop without removing the headset.");
+            }
+#endif
         }
+
+        // Flag flipped the first time we observe the local player's
+        // imageUrl in poll data — used to drive the MR → VR exit on draw
+        // submit and to avoid re-firing on every subsequent poll tick.
+        private bool _localDrawingSubmitted;
 
         private void OnPollUpdate(SessionData data)
         {
@@ -213,6 +232,23 @@ namespace Tigerverse.Core
                     eggs[1].progress01 = MapStatus(data.p2.status);
                 }
             }
+
+            // Detect "local player just submitted their drawing" — they
+            // got their doodle uploaded so they're now done with the
+            // laptop. Drop passthrough so they can enjoy the VR lobby
+            // (egg hatching, opponent visible, etc) immersively again.
+#if UNITY_XR_META_OPENXR
+            if (!_localDrawingSubmitted && Tigerverse.MR.MRSession.InMR)
+            {
+                PlayerData mine = localCasterIndex == 0 ? data.p1 : data.p2;
+                if (mine != null && !string.IsNullOrEmpty(mine.imageUrl))
+                {
+                    _localDrawingSubmitted = true;
+                    Tigerverse.MR.MRSession.Exit();
+                    Debug.Log("[GameStateManager] Local drawing submitted — exiting passthrough MR back to VR lobby.");
+                }
+            }
+#endif
         }
 
         private void OnBothPlayersReady(SessionData data)
