@@ -21,11 +21,12 @@ MonoBehaviour:
   - grass
   icon: {fileID: 0}
   element: 5
-  baseDamage: 22
+  baseDamage: 20
   castDurationSec: 0.6
-  animTrigger: AttackGrass
+  animTrigger: AttackSlash
+  cooldownSeconds: 4
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
-  specialFlag: 3
-  specialValue: 5
+  specialFlag: 0
+  specialValue: 0

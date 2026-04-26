@@ -1,4 +1,5 @@
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -143,7 +144,7 @@ namespace Tigerverse.Combat
                 freezeCaster = false;
                 EffectFlags skipFlags = EffectFlags.Frozen;
                 FlipTurn(casterIndex);
-                RPC_PlayResolved(moveId, casterIndex, casterIsA ? HPb : HPa, (byte)skipFlags);
+                RPC_PlayResolved(moveId, casterIndex, casterIsA ? HPb : HPa, (byte)skipFlags, 0);
                 return;
             }
 
@@ -261,7 +262,7 @@ namespace Tigerverse.Combat
             if (finalBlow) effects |= EffectFlags.FinalBlow;
 
             int newDefenderHP = casterIsA ? HPb : HPa;
-            RPC_PlayResolved(moveId, casterIndex, newDefenderHP, (byte)effects);
+            RPC_PlayResolved(moveId, casterIndex, newDefenderHP, (byte)effects, damage);
         }
 
         private void FlipTurn(int casterIndex)
@@ -279,7 +280,7 @@ namespace Tigerverse.Combat
         }
 
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-        private void RPC_PlayResolved(byte moveId, int casterIndex, int newDefenderHp, byte effectFlags)
+        private void RPC_PlayResolved(byte moveId, int casterIndex, int newDefenderHp, byte effectFlags, int damageDealt)
         {
             if (catalog == null || catalog.moves == null || moveId >= catalog.moves.Length) return;
             var move = catalog.moves[moveId];
@@ -299,10 +300,10 @@ namespace Tigerverse.Combat
                 else             { if (cryB != null) cryB.PlayWin();  if (cryA != null) cryA.PlayLose(); }
             }
 
-            StartCoroutine(PlayMoveSequence(move, casterIndex));
+            StartCoroutine(PlayMoveSequence(move, casterIndex, damageDealt));
         }
 
-        private IEnumerator PlayMoveSequence(MoveSO move, int casterIndex)
+        private IEnumerator PlayMoveSequence(MoveSO move, int casterIndex, int damageDealt)
         {
             if (move == null) yield break;
 
@@ -311,31 +312,395 @@ namespace Tigerverse.Combat
             var casterPivot = casterIsA ? monsterAPivot : monsterBPivot;
             var defenderPivot = casterIsA ? monsterBPivot : monsterAPivot;
 
-            // Cry before attack.
+            float castDuration = Mathf.Max(0.05f, move.castDurationSec);
+
+            // 1. Cry before attack.
             if (casterCry != null) casterCry.PlayBeforeAttack();
 
-            // Cast SFX at caster.
+            // 2. Cast SFX at caster.
             if (move.castSfx != null && casterPivot != null)
                 AudioSource.PlayClipAtPoint(move.castSfx, casterPivot.position);
 
-            // Spawn VFX at attacker.
+            // 3. Caster lunge animation (parallel — don't yield).
+            if (casterPivot != null && move.specialFlag != MoveSO.SpecialFlag.HealSelf)
+            {
+                StartCoroutine(LungeCoroutine(casterPivot, 0.3f, castDuration * 0.5f));
+            }
+
+            // Special-flag short-circuits: HealSelf / NegateNext / Taunt-style effects.
+            if (move.specialFlag == MoveSO.SpecialFlag.HealSelf)
+            {
+                if (casterPivot != null) SpawnHealRing(casterPivot.position);
+                yield return new WaitForSeconds(castDuration);
+                // Damage popup is skipped because dmg <= 0.
+                yield break;
+            }
+
+            if (move.specialFlag == MoveSO.SpecialFlag.NegateNext ||
+                move.specialFlag == MoveSO.SpecialFlag.BuffNextAttack)
+            {
+                if (casterPivot != null) SpawnAuraDome(casterPivot.position, move.element);
+                yield return new WaitForSeconds(castDuration);
+                yield break;
+            }
+
+            // 4. Either play assigned vfxPrefab or spawn procedural orb.
             GameObject vfxInstance = null;
+            ProceduralOrbState orb = null;
+            float waitForArrival = castDuration;
+
             if (move.vfxPrefab != null && casterPivot != null)
             {
                 vfxInstance = Instantiate(move.vfxPrefab, casterPivot.position, casterPivot.rotation);
+                waitForArrival = castDuration;
+            }
+            else if (casterPivot != null && defenderPivot != null)
+            {
+                orb = SpawnProceduralOrb(casterPivot.position, defenderPivot, move.element, castDuration * 0.6f);
+                waitForArrival = castDuration * 0.6f;
             }
 
-            yield return new WaitForSeconds(Mathf.Max(0f, move.castDurationSec));
+            // 5. Wait for cast/arrival.
+            yield return new WaitForSeconds(waitForArrival);
 
-            // Impact: SFX at defender, optional VFX move.
+            // Clean up procedural orb on arrival.
+            if (orb != null && orb.gameObject != null)
+            {
+                Destroy(orb.gameObject);
+            }
+
+            // 6. Impact: SFX at defender.
             if (move.hitSfx != null && defenderPivot != null)
                 AudioSource.PlayClipAtPoint(move.hitSfx, defenderPivot.position);
 
+            // Move prefab vfx to defender if it was an assigned one.
             if (vfxInstance != null && defenderPivot != null)
             {
                 vfxInstance.transform.position = defenderPivot.position;
                 Destroy(vfxInstance, 2f);
             }
+
+            // 7. Procedural impact burst + defender hit-shake.
+            if (defenderPivot != null)
+            {
+                SpawnImpactBurst(defenderPivot.position, move.element);
+                StartCoroutine(HitShakeCoroutine(defenderPivot, 0.05f, 0.25f));
+
+                // Damage popup floating text (skip on heal/status).
+                if (damageDealt > 0)
+                    SpawnDamagePopup(defenderPivot.position, damageDealt, move.element);
+            }
+
+            // 8. Tail wait so the shake/impact have time to be seen before next move.
+            yield return new WaitForSeconds(0.25f);
+        }
+
+        // --- Procedural FX helpers ----------------------------------------
+
+        private static Color ElementTint(ElementType e)
+        {
+            switch (e)
+            {
+                case ElementType.Fire:     return new Color(1.00f, 0.45f, 0.20f);
+                case ElementType.Water:    return new Color(0.30f, 0.60f, 1.00f);
+                case ElementType.Electric: return new Color(1.00f, 0.95f, 0.30f);
+                case ElementType.Earth:    return new Color(0.55f, 0.40f, 0.25f);
+                case ElementType.Grass:    return new Color(0.40f, 0.85f, 0.40f);
+                case ElementType.Ice:      return new Color(0.70f, 0.95f, 1.00f);
+                case ElementType.Dark:     return new Color(0.45f, 0.25f, 0.55f);
+                case ElementType.Neutral:
+                default:                   return new Color(1.00f, 0.95f, 0.85f);
+            }
+        }
+
+        private static Material MakeUnlitMaterial(Color tint)
+        {
+            var sh = Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) sh = Shader.Find("Unlit/Color");
+            var mat = new Material(sh);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            else mat.color = tint;
+            return mat;
+        }
+
+        private class ProceduralOrbState
+        {
+            public GameObject gameObject;
+        }
+
+        private IEnumerator LungeCoroutine(Transform t, float distance, float duration)
+        {
+            if (t == null || duration <= 0f) yield break;
+            Vector3 startLocal = t.localPosition;
+            float elapsed = 0f;
+            while (elapsed < duration && t != null)
+            {
+                elapsed += Time.deltaTime;
+                float p = Mathf.Clamp01(elapsed / duration);
+                float curve = Mathf.Sin(p * Mathf.PI); // 0 → 1 → 0
+                t.localPosition = startLocal + new Vector3(0f, 0f, distance * curve);
+                yield return null;
+            }
+            if (t != null) t.localPosition = startLocal;
+        }
+
+        private IEnumerator HitShakeCoroutine(Transform t, float amplitude, float duration)
+        {
+            if (t == null || duration <= 0f) yield break;
+            Vector3 startLocal = t.localPosition;
+            float elapsed = 0f;
+            // 3-4 wiggle cycles, diminishing.
+            float frequency = 14f;
+            while (elapsed < duration && t != null)
+            {
+                elapsed += Time.deltaTime;
+                float p = Mathf.Clamp01(elapsed / duration);
+                float decay = 1f - p;
+                float offset = Mathf.Sin(elapsed * frequency) * amplitude * decay;
+                t.localPosition = startLocal + new Vector3(offset, 0f, 0f);
+                yield return null;
+            }
+            if (t != null) t.localPosition = startLocal;
+        }
+
+        private ProceduralOrbState SpawnProceduralOrb(Vector3 startPos, Transform defender, ElementType element, float duration)
+        {
+            var orb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            orb.name = "ProcOrb";
+            var col = orb.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+            orb.transform.position = startPos;
+            orb.transform.localScale = Vector3.one * 0.18f;
+
+            var rend = orb.GetComponent<Renderer>();
+            if (rend != null)
+            {
+                Color tint = ElementTint(element);
+                rend.sharedMaterial = MakeUnlitMaterial(tint);
+                rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                rend.receiveShadows = false;
+            }
+
+            var state = new ProceduralOrbState { gameObject = orb };
+            StartCoroutine(AnimateOrb(orb, startPos, defender, duration, state));
+            return state;
+        }
+
+        private IEnumerator AnimateOrb(GameObject orb, Vector3 startPos, Transform defender, float duration, ProceduralOrbState state)
+        {
+            if (orb == null) yield break;
+            float elapsed = 0f;
+            while (elapsed < duration && orb != null && state != null && state.gameObject == orb)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                Vector3 endPos = (defender != null) ? defender.position : startPos;
+                Vector3 pos = Vector3.Lerp(startPos, endPos, t);
+                pos.y += 0.2f * Mathf.Sin(t * Mathf.PI); // parabolic arc
+                orb.transform.position = pos;
+                yield return null;
+            }
+        }
+
+        private void SpawnImpactBurst(Vector3 position, ElementType element)
+        {
+            var go = new GameObject("ImpactBurst");
+            go.transform.position = position;
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
+            var mat = new Material(sh);
+            Color tint = ElementTint(element);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            else mat.color = tint;
+            psr.sharedMaterial = mat;
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.2f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.45f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(2f, 4f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.12f);
+            main.startColor    = new ParticleSystem.MinMaxGradient(tint, Color.Lerp(tint, Color.white, 0.4f));
+            main.maxParticles  = 60;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 30) });
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.06f;
+
+            ps.Play();
+            Destroy(go, 1.5f);
+        }
+
+        private void SpawnHealRing(Vector3 position)
+        {
+            var go = new GameObject("HealRing");
+            go.transform.position = position;
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
+            var mat = new Material(sh);
+            Color soft = new Color(0.55f, 1f, 0.55f);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", soft);
+            else mat.color = soft;
+            psr.sharedMaterial = mat;
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.6f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.0f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.10f);
+            main.startColor    = new ParticleSystem.MinMaxGradient(
+                new Color(0.55f, 1f, 0.55f), new Color(0.85f, 1f, 0.80f));
+            main.maxParticles  = 80;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = new ParticleSystem.MinMaxCurve(60f);
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Donut;
+            shape.radius = 0.45f;
+            shape.donutRadius = 0.05f;
+            shape.rotation = new Vector3(90f, 0f, 0f);
+
+            // Spiral upward.
+            var velOL = ps.velocityOverLifetime;
+            velOL.enabled = true;
+            velOL.space = ParticleSystemSimulationSpace.World;
+            velOL.y = new ParticleSystem.MinMaxCurve(1.2f, 2.0f);
+            velOL.orbitalY = new ParticleSystem.MinMaxCurve(1.5f);
+
+            ps.Play();
+            Destroy(go, 2f);
+        }
+
+        private void SpawnAuraDome(Vector3 position, ElementType element)
+        {
+            var go = new GameObject("AuraDome");
+            go.transform.position = position;
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
+            var mat = new Material(sh);
+            Color tint = Color.Lerp(ElementTint(element), Color.white, 0.6f);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            else mat.color = tint;
+            psr.sharedMaterial = mat;
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.5f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.5f, 0.9f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(0.2f, 0.6f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.10f);
+            main.startColor    = new ParticleSystem.MinMaxGradient(tint, new Color(1f, 1f, 1f, 0.6f));
+            main.maxParticles  = 80;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Hemisphere;
+            shape.radius = 0.5f;
+
+            ps.Play();
+            Destroy(go, 1.5f);
+        }
+
+        private void SpawnDamagePopup(Vector3 position, int damage, ElementType element)
+        {
+            var go = new GameObject("DamagePopup");
+            go.transform.position = position + Vector3.up * 0.6f;
+
+            var canvasGO = new GameObject("Canvas");
+            canvasGO.transform.SetParent(go.transform, false);
+            var canvas = canvasGO.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvasGO.AddComponent<UnityEngine.UI.CanvasScaler>();
+            var rt = canvas.GetComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(2f, 1f);
+            rt.localScale = Vector3.one * 0.01f;
+
+            var textGO = new GameObject("Text");
+            textGO.transform.SetParent(canvasGO.transform, false);
+            var tmp = textGO.AddComponent<TextMeshProUGUI>();
+            tmp.text = damage.ToString();
+            tmp.fontSize = 36;
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.color = ElementTint(element);
+            tmp.alignment = TextAlignmentOptions.Center;
+            var trt = tmp.rectTransform;
+            trt.sizeDelta = new Vector2(2f, 1f);
+            trt.anchoredPosition = Vector2.zero;
+
+            StartCoroutine(AnimateDamagePopup(go, tmp));
+        }
+
+        private IEnumerator AnimateDamagePopup(GameObject go, TMP_Text tmp)
+        {
+            if (go == null) yield break;
+            Vector3 startPos = go.transform.position;
+            float duration = 0.8f;
+            float scaleInDuration = 0.15f;
+            float elapsed = 0f;
+            Camera cam = Camera.main;
+
+            while (elapsed < duration && go != null)
+            {
+                elapsed += Time.deltaTime;
+                float p = Mathf.Clamp01(elapsed / duration);
+                go.transform.position = startPos + Vector3.up * (0.6f * p);
+
+                // Scale pop-in 0.5 → 1.0 in first 0.15s.
+                float s;
+                if (elapsed < scaleInDuration)
+                    s = Mathf.Lerp(0.5f, 1f, elapsed / scaleInDuration);
+                else
+                    s = 1f;
+
+                // Billboard to camera if available.
+                if (cam != null)
+                {
+                    Quaternion camRot = cam.transform.rotation;
+                    go.transform.rotation = Quaternion.LookRotation(
+                        go.transform.position - cam.transform.position, camRot * Vector3.up);
+                }
+
+                go.transform.localScale = Vector3.one * s;
+
+                if (tmp != null)
+                {
+                    var c = tmp.color;
+                    c.a = 1f - p;
+                    tmp.color = c;
+                }
+                yield return null;
+            }
+            if (go != null) Destroy(go);
         }
 
         public override void Render()

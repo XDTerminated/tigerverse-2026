@@ -23,9 +23,10 @@ MonoBehaviour:
   element: 7
   baseDamage: 24
   castDurationSec: 0.6
-  animTrigger: AttackDark
+  animTrigger: AttackBite
+  cooldownSeconds: 5
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
-  specialFlag: 2
-  specialValue: 1
+  specialFlag: 4
+  specialValue: 0

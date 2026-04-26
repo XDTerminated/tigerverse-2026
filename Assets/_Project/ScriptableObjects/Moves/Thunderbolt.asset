@@ -21,11 +21,12 @@ MonoBehaviour:
   - shock
   icon: {fileID: 0}
   element: 3
-  baseDamage: 25
+  baseDamage: 28
   castDurationSec: 0.5
-  animTrigger: AttackElectric
+  animTrigger: AttackZap
+  cooldownSeconds: 6
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
-  specialFlag: 0
-  specialValue: 0
+  specialFlag: 1
+  specialValue: 0.25

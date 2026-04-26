@@ -21,11 +21,12 @@ MonoBehaviour:
   - quake
   icon: {fileID: 0}
   element: 4
-  baseDamage: 28
+  baseDamage: 26
   castDurationSec: 1
-  animTrigger: AttackEarth
+  animTrigger: AttackSmash
+  cooldownSeconds: 5.5
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
-  specialFlag: 0
+  specialFlag: 2
   specialValue: 0

@@ -24,8 +24,9 @@ MonoBehaviour:
   baseDamage: 18
   castDurationSec: 0.5
   animTrigger: AttackIce
+  cooldownSeconds: 4
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
   specialFlag: 1
-  specialValue: 0.2
+  specialValue: 0.4

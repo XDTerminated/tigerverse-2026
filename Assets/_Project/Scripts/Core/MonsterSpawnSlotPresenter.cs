@@ -115,13 +115,23 @@ namespace Tigerverse.Core
                 _egg.progress01 = 0f;
             }
 
-            // Hand off to the hatch sequence — when the GLB really arrives,
-            // wrap up the tutorial AND destroy the start-tutorial button so
-            // it doesn't visually overlap the BYPASS / READY UI that
-            // GameStateManager spawns next.
-            if (!_hatchHandedOff && !string.IsNullOrEmpty(data.glbUrl))
+            // Hand off to the hatch sequence — only when BOTH players' GLBs
+            // are ready. The tutorial is meant to keep the local player
+            // entertained while waiting for the OTHER player too, so we
+            // don't dismiss the Professor just because our own monster
+            // finished generating.
+            bool bothGlbsReady = apiClient.LastSession != null
+                && apiClient.LastSession.p1 != null
+                && apiClient.LastSession.p2 != null
+                && !string.IsNullOrEmpty(apiClient.LastSession.p1.glbUrl)
+                && !string.IsNullOrEmpty(apiClient.LastSession.p2.glbUrl);
+
+            if (!_hatchHandedOff && bothGlbsReady)
             {
-                if (_tutorial != null) _tutorial.Stop();
+                // Prefer a graceful leave (goodbye line + animation) over a
+                // hard Stop(). BeginLeave will destroy the tutorial GameObject
+                // itself once the leave animation finishes.
+                if (_tutorial != null) _tutorial.BeginLeave();
                 if (_startButton != null && _startButton.gameObject != null)
                 {
                     Destroy(_startButton.gameObject);
@@ -129,6 +139,10 @@ namespace Tigerverse.Core
                 }
                 _hatchHandedOff = true;
             }
+            // Emergency shutdown: if our local egg has already hatched (the
+            // hatch sequence destroys the egg and reveals the monster), the
+            // Professor must go away immediately, even if the opponent's GLB
+            // hasn't arrived yet — otherwise he'd float next to the live monster.
             if (_egg != null && _egg.IsHatched && _tutorial != null)
             {
                 _tutorial.Stop();

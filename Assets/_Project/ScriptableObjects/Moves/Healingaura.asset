@@ -22,10 +22,11 @@ MonoBehaviour:
   icon: {fileID: 0}
   element: 0
   baseDamage: 0
-  castDurationSec: 0.7
-  animTrigger: Heal
+  castDurationSec: 1
+  animTrigger: AttackHeal
+  cooldownSeconds: 8
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
   specialFlag: 3
-  specialValue: 20
+  specialValue: 30

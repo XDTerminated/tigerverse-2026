@@ -50,10 +50,36 @@ namespace Tigerverse.UI
         private bool           _qaMode;
         private bool           _practiceMode;
         private bool           _practiceTriggered;
+        private bool           _continuousPractice;
+        private int            _practiceHitCount;
         private GameObject     _borrowedScribble;
         private GameObject     _dummy;
         private readonly Queue<string> _pendingQuestions = new Queue<string>();
         private readonly List<string>  _conversationLog = new List<string>();
+
+        // Cached "stage" placement, computed once at BuildScene() time so it
+        // doesn't drift when the player moves their head. Stage = a small
+        // area ~3.5m in front of the player where the Professor + dummy +
+        // borrowed scribble all live. World-space.
+        private Vector3 _stageCenter;
+        private Vector3 _stageForward; // points from stage toward the player (so professor faces this)
+        private Vector3 _stageLeft;    // 90° from forward, "left of professor from the player's POV"
+
+        // Move trigger keywords used during continuous practice. Each entry's
+        // first element is the canonical move name (used to pick a color),
+        // the rest are simple Contains() keywords we accept from a transcript.
+        private static readonly (string move, string[] keywords, Color color)[] PracticeMoves =
+        {
+            ("thunder bolt",  new[] { "thunder", "bolt", "lightning" },         new Color(1f,    0.95f, 0.40f)), // electric/yellow
+            ("fireball",      new[] { "fire",    "fireball", "flame", "burn" }, new Color(1f,    0.55f, 0.20f)), // fire/orange
+            ("water gun",     new[] { "water",   "aqua",     "splash" },        new Color(0.30f, 0.65f, 1.00f)), // water/blue
+            ("ice shard",     new[] { "ice",     "frost",    "freeze" },        new Color(0.75f, 0.95f, 1.00f)), // ice/pale cyan
+            ("leaf blade",    new[] { "leaf",    "grass",    "vine" },          new Color(0.45f, 0.85f, 0.40f)), // grass/green
+            ("rock smash",    new[] { "rock",    "stone",    "earth", "smash" },new Color(0.60f, 0.45f, 0.30f)), // rock/brown
+            ("shadow bite",   new[] { "shadow",  "dark",     "bite" },          new Color(0.45f, 0.25f, 0.65f)), // dark/purple
+            ("healing aura",  new[] { "heal",    "healing",  "aura"  },         new Color(0.55f, 1.00f, 0.65f)), // heal/soft-green
+            ("taunt",         new[] { "taunt"  },                               new Color(1.00f, 1.00f, 1.00f)), // taunt/white
+        };
 
         private const int MaxConversationTurns = 8;
         private const string FallbackVoice = "21m00Tcm4TlvDq8ikWAM"; // Rachel — works on every ElevenLabs free key
@@ -115,6 +141,8 @@ namespace Tigerverse.UI
             if (voiceRouter != null)
             {
                 voiceRouter.OnTranscript.RemoveListener(OnPlayerSpoke);
+                voiceRouter.OnTranscript.RemoveListener(OnPracticeTranscript);
+                voiceRouter.OnTranscript.RemoveListener(OnContinuousPracticeTranscript);
                 voiceRouter.SetOpenMicMode(false); // restore push-to-talk for combat
             }
         }
@@ -131,18 +159,71 @@ namespace Tigerverse.UI
             if (gameObject != null) Destroy(gameObject);
         }
 
+        /// <summary>
+        /// Graceful exit: speaks a goodbye line, plays the Professor's leave
+        /// animation, then destroys the whole tutorial. Preferred over Stop()
+        /// once both players' eggs are ready — the user gets a clean send-off
+        /// instead of an abrupt disappearance. Stop() is still used for
+        /// emergencies (e.g. the local egg hatched first).
+        /// </summary>
+        public void BeginLeave()
+        {
+            if (_stopRequested) return;
+            _stopRequested = true;
+            StartCoroutine(LeaveSequence());
+        }
+
+        private IEnumerator LeaveSequence()
+        {
+            // Stop continuous practice listeners immediately.
+            if (_continuousPractice && voiceRouter != null)
+            {
+                voiceRouter.OnTranscript.RemoveListener(OnContinuousPracticeTranscript);
+                _continuousPractice = false;
+            }
+
+            // Speak a goodbye line (uses SpeakLine directly, NOT the
+            // _stopRequested-gated paths in RunTutorial — we want this line
+            // to play even though we just set _stopRequested = true).
+            yield return SpeakLine("Looks like both eggs are ready! Good luck, trainer.");
+
+            // Tell the professor to do its leave animation.
+            if (_professor != null) yield return _professor.PlayLeaveAnimation();
+
+            // Then destroy ourselves so the dummy / borrowed scribble /
+            // subtitle / professor all disappear together.
+            if (gameObject != null) Destroy(gameObject);
+        }
+
         // ─── Scene build ────────────────────────────────────────────────
         private void BuildScene()
         {
+            // Compute a "stage" position ~3.5m in front of the local camera
+            // at the slot's floor height. This puts the Professor + dummy +
+            // borrowed scribble in a clear area away from the eggs, instead
+            // of right next to them where they used to block the view.
+            ComputeStageTransform();
+
             var profGo = new GameObject("PaperProfessor");
-            profGo.transform.SetParent(transform, worldPositionStays: false);
-            profGo.transform.localPosition = professorOffset;
-            profGo.transform.localRotation = Quaternion.Euler(0, professorYawDeg, 0);
+            // Keep the GameObject parented so destruction cascades, but use
+            // a WORLD-space position so we're not fighting whatever rotation
+            // / scaling lives on the slot pivot's parent chain.
+            profGo.transform.SetParent(transform, worldPositionStays: true);
+            profGo.transform.position = _stageCenter;
+            // Face the player. _stageForward points stage->player on Y plane.
+            if (_stageForward.sqrMagnitude > 1e-4f)
+                profGo.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
+            else
+                profGo.transform.rotation = Quaternion.Euler(0, professorYawDeg, 0);
             _professor = profGo.AddComponent<PaperProfessor>();
+            // Pop-in animation handled by PaperProfessor (added by another agent).
+            StartCoroutine(_professor.PlaySpawnAnimation());
 
             if (subtitleLabel == null)
             {
                 var lblGo = new GameObject("ProfessorSubtitle");
+                // Subtitle stays parented to the professor so it tracks any
+                // bobbing / movement the figure has during speech.
                 lblGo.transform.SetParent(profGo.transform, false);
                 lblGo.transform.localPosition = new Vector3(0, 1.45f, 0);
                 subtitleLabel = lblGo.AddComponent<TMPro.TextMeshPro>();
@@ -154,6 +235,35 @@ namespace Tigerverse.UI
                 subtitleLabel.outlineWidth = 0.18f;
                 subtitleLabel.enableWordWrapping = true;
                 subtitleLabel.rectTransform.sizeDelta = new Vector2(2.2f, 0.6f);
+            }
+        }
+
+        // Picks the stage center / orientation ONCE at tutorial start, so
+        // none of it drifts when the player turns their head later.
+        private void ComputeStageTransform()
+        {
+            var cam = Camera.main;
+            float floorY = transform.position.y; // slot's floor height
+            if (cam != null)
+            {
+                Vector3 camFwd = cam.transform.forward;
+                camFwd.y = 0f;
+                if (camFwd.sqrMagnitude < 1e-4f) camFwd = Vector3.forward;
+                camFwd.Normalize();
+
+                _stageCenter  = cam.transform.position + camFwd * 3.5f;
+                _stageCenter.y = floorY;
+                _stageForward = -camFwd; // from stage back toward player
+                _stageLeft    = Vector3.Cross(Vector3.up, _stageForward).normalized;
+            }
+            else
+            {
+                // No camera (editor / headless) — fall back to slot-local
+                // offset so we still place the stage somewhere reasonable.
+                _stageCenter  = transform.position + transform.TransformVector(professorOffset);
+                _stageCenter.y = floorY;
+                _stageForward = -transform.forward;
+                _stageLeft    = Vector3.Cross(Vector3.up, _stageForward).normalized;
             }
         }
 
@@ -198,13 +308,25 @@ namespace Tigerverse.UI
                 _qaMode = true;
                 ShowSubtitle("(Listening — ask me anything!)");
 
-                while (!_stopRequested)
+                // Q&A loop runs UNTIL the player stops asking. We don't
+                // wait for _stopRequested here anymore — once the queue
+                // goes idle for a few seconds we move on to continuous
+                // practice so the player has something to do while waiting
+                // on the OTHER player's GLB.
+                float idleSec = 0f;
+                const float idleTimeoutSec = 12f;
+                while (!_stopRequested && idleSec < idleTimeoutSec)
                 {
                     if (_pendingQuestions.Count > 0)
                     {
+                        idleSec = 0f;
                         string q = _pendingQuestions.Dequeue();
                         yield return AnswerQuestion(q);
                         if (!_stopRequested) ShowSubtitle("(Listening — ask me anything else!)");
+                    }
+                    else
+                    {
+                        idleSec += Time.deltaTime;
                     }
                     yield return null;
                 }
@@ -213,7 +335,14 @@ namespace Tigerverse.UI
                 _qaMode = false;
             }
 
+            if (_stopRequested) yield break;
+
             yield return SpeakLine("Good luck out there, trainer. Your scribble is almost ready.");
+
+            // Continuous practice: keeps the player engaged on the dummy
+            // (with simple voice-cast moves) until BeginLeave() / Stop() is
+            // invoked when both players' eggs are ready.
+            if (!_stopRequested) yield return RunContinuousPractice();
         }
 
         // ─── Practice fight ─────────────────────────────────────────────
@@ -251,10 +380,16 @@ namespace Tigerverse.UI
             }
 
             var container = new GameObject("BorrowedScribble");
-            container.transform.SetParent(transform, false);
-            // Sit between the Professor and the dummy.
-            container.transform.localPosition = new Vector3(professorOffset.x - 0.55f, 0f, professorOffset.z - 0.4f);
-            container.transform.localRotation = Quaternion.Euler(0, 90f, 0);
+            container.transform.SetParent(transform, worldPositionStays: true);
+            // Sit between the Professor (at stage center) and the dummy
+            // (further to the professor's left). 0.4m to the left puts it
+            // visibly between the two from the player's POV.
+            container.transform.position = _stageCenter + _stageLeft * 0.4f;
+            // Face the same direction the Professor is facing (toward player).
+            if (_stageForward.sqrMagnitude > 1e-4f)
+                container.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
+            else
+                container.transform.rotation = Quaternion.Euler(0, 90f, 0);
 
             var instTask = gltf.InstantiateMainSceneAsync(container.transform);
             yield return new WaitUntil(() => instTask.IsCompleted);
@@ -278,11 +413,16 @@ namespace Tigerverse.UI
         {
             if (_dummy != null) return;
             // Procedural paper-craft target dummy: head ball + body cylinder
-            // + a tiny X face, painted plain white. Faces toward the Professor.
+            // + a tiny X face, painted plain white. Sits ~1m to the
+            // professor's left from the player's POV, facing back toward
+            // the player so the X eyes are visible.
             var root = new GameObject("PracticeDummy");
-            root.transform.SetParent(transform, false);
-            root.transform.localPosition = new Vector3(professorOffset.x - 1.4f, 0f, professorOffset.z - 0.5f);
-            root.transform.localRotation = Quaternion.Euler(0, 90f, 0);
+            root.transform.SetParent(transform, worldPositionStays: true);
+            root.transform.position = _stageCenter + _stageLeft * 1.0f;
+            if (_stageForward.sqrMagnitude > 1e-4f)
+                root.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
+            else
+                root.transform.rotation = Quaternion.Euler(0, 90f, 0);
 
             var sh = Shader.Find("Universal Render Pipeline/Lit");
             var paperMat = new Material(sh);
@@ -444,6 +584,174 @@ namespace Tigerverse.UI
             }
 
             yield return new WaitForSeconds(0.2f);
+        }
+
+        // ─── Continuous practice ────────────────────────────────────────
+        // Runs after the wrap-up line, until BeginLeave/Stop is called.
+        // The player can keep voice-casting moves at the dummy; every
+        // ~5 hits the dummy falls over and respawns. This is a visual
+        // stand-in for HP — no real numbers tracked.
+        private IEnumerator RunContinuousPractice()
+        {
+            // The scripted ThunderBolt demo destroys the dummy. Bring it
+            // back so there's something to practice on.
+            if (_dummy == null) SpawnDummy();
+
+            _practiceHitCount = 0;
+            _continuousPractice = true;
+            if (voiceRouter != null)
+                voiceRouter.OnTranscript.AddListener(OnContinuousPracticeTranscript);
+
+            ShowSubtitle("(Practice freely — call out moves to attack the dummy!)");
+            Debug.Log("[ProfessorTutorial] Continuous practice mode active.");
+
+            while (!_stopRequested)
+            {
+                yield return null;
+            }
+
+            if (_continuousPractice && voiceRouter != null)
+            {
+                voiceRouter.OnTranscript.RemoveListener(OnContinuousPracticeTranscript);
+            }
+            _continuousPractice = false;
+        }
+
+        private void OnContinuousPracticeTranscript(string transcript)
+        {
+            if (!_continuousPractice || _stopRequested) return;
+            if (string.IsNullOrEmpty(transcript)) return;
+
+            string lower = transcript.ToLowerInvariant();
+            for (int i = 0; i < PracticeMoves.Length; i++)
+            {
+                var entry = PracticeMoves[i];
+                for (int k = 0; k < entry.keywords.Length; k++)
+                {
+                    if (lower.Contains(entry.keywords[k]))
+                    {
+                        Debug.Log($"[ProfessorTutorial] Practice hit: '{entry.move}' (matched '{entry.keywords[k]}' in '{lower}')");
+                        StartCoroutine(PracticeMoveHit(entry.move, entry.color));
+                        return;
+                    }
+                }
+            }
+        }
+
+        private IEnumerator PracticeMoveHit(string moveName, Color fxColor)
+        {
+            if (_dummy == null) yield break;
+
+            // Particle burst from the borrowed scribble (or stage center if
+            // the scribble didn't load) toward the dummy, colored by move.
+            SpawnColoredBurst(fxColor);
+
+            // Hit-flash scale punch on the dummy. Same shape as the demo.
+            Vector3 startScale = _dummy != null ? _dummy.transform.localScale : Vector3.one;
+            float t = 0f, dur = 0.15f;
+            while (t < dur && _dummy != null)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Sin((t / dur) * Mathf.PI);
+                _dummy.transform.localScale = startScale * (1f + 0.18f * k);
+                yield return null;
+            }
+            if (_dummy != null) _dummy.transform.localScale = startScale;
+
+            _practiceHitCount++;
+            if (_practiceHitCount >= 5)
+            {
+                yield return PracticeFallAndRespawn();
+            }
+        }
+
+        private IEnumerator PracticeFallAndRespawn()
+        {
+            if (_dummy != null)
+            {
+                Vector3 startPos = _dummy.transform.localPosition;
+                Quaternion startRot = _dummy.transform.localRotation;
+
+                float t = 0f, dur = 0.55f;
+                while (t < dur && _dummy != null)
+                {
+                    t += Time.deltaTime;
+                    float k = Mathf.Clamp01(t / dur);
+                    float eased = k * k;
+                    _dummy.transform.localRotation = startRot * Quaternion.Euler(0f, 0f, 90f * eased);
+                    _dummy.transform.localPosition = startPos + new Vector3(0, -0.05f * eased, 0);
+                    yield return null;
+                }
+
+                yield return new WaitForSeconds(0.35f);
+                FadeAndDestroy(_dummy, 0.4f);
+                _dummy = null;
+            }
+
+            // Wait, then respawn (only if we're still meant to be running).
+            yield return new WaitForSeconds(1.5f);
+            if (_stopRequested) yield break;
+
+            SpawnDummy();
+            _practiceHitCount = 0;
+        }
+
+        // Lightning-style burst, but with a parameterized color so different
+        // moves look different. Mirrors SpawnLightningEffect's setup.
+        private void SpawnColoredBurst(Color color)
+        {
+            if (_dummy == null) return;
+
+            // Origin: borrowed scribble if present, else somewhere between
+            // the stage center and the dummy so the burst still has a clear
+            // direction toward the target.
+            Vector3 origin = _borrowedScribble != null
+                ? _borrowedScribble.transform.position + Vector3.up * 0.4f
+                : _stageCenter + _stageLeft * 0.4f + Vector3.up * 0.5f;
+
+            var go = new GameObject("PracticeBurstFx");
+            go.transform.SetParent(transform, worldPositionStays: true);
+            go.transform.position = origin;
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
+            var mat = new Material(sh);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            else mat.color = color;
+            psr.sharedMaterial = mat;
+            psr.renderMode = ParticleSystemRenderMode.Stretch;
+            psr.lengthScale = 4f;
+            psr.velocityScale = 0.3f;
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.25f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.35f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(6f, 10f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.10f);
+            main.startColor    = new ParticleSystem.MinMaxGradient(color, Color.Lerp(color, Color.white, 0.5f));
+            main.maxParticles = 80;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 6f;
+            shape.radius = 0.05f;
+            Vector3 toDummy = (_dummy.transform.position + Vector3.up * 0.4f) - go.transform.position;
+            if (toDummy.sqrMagnitude > 1e-6f)
+                go.transform.rotation = Quaternion.LookRotation(toDummy.normalized, Vector3.up);
+
+            ps.Play();
+            Destroy(go, 1.5f);
         }
 
         private void SpawnLightningEffect()

@@ -24,6 +24,7 @@ MonoBehaviour:
   baseDamage: 22
   castDurationSec: 0.7
   animTrigger: AttackFire
+  cooldownSeconds: 4.5
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}

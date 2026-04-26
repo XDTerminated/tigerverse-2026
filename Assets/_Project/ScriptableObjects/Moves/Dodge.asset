@@ -21,10 +21,11 @@ MonoBehaviour:
   icon: {fileID: 0}
   element: 0
   baseDamage: 0
-  castDurationSec: 0.3
+  castDurationSec: 0.4
   animTrigger: Dodge
+  cooldownSeconds: 2.5
   vfxPrefab: {fileID: 0}
   castSfx: {fileID: 0}
   hitSfx: {fileID: 0}
   specialFlag: 5
-  specialValue: 0.6
+  specialValue: 0

@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace Tigerverse.UI
@@ -28,6 +29,8 @@ namespace Tigerverse.UI
         private Quaternion _baseLeftArmRot, _baseRightArmRot, _baseHeadRot;
         private float     _phase;
         private float     _speakT = -10f;
+        private bool      _spawning;
+        private bool      _leaving;
 
         private void Awake()
         {
@@ -152,6 +155,10 @@ namespace Tigerverse.UI
         {
             _phase += Time.deltaTime;
 
+            // Suspend idle bob / sway / speaking pulses while a spawn or leave
+            // animation is driving the figure directly.
+            if (_spawning || _leaving) return;
+
             // Idle sway (whole body).
             float sway = Mathf.Sin(_phase * idleSwayHz * Mathf.PI * 2f) * idleSwayDeg;
             transform.localRotation = Quaternion.Euler(0, 0, sway);
@@ -193,6 +200,261 @@ namespace Tigerverse.UI
         {
             _speakT = Time.time;
             if (duration > 0f) speakDuration = duration;
+        }
+
+        /// <summary>
+        /// Poof-in spawn. Scales up from 0 with a tiny elastic overshoot,
+        /// rises from y=-0.3 to y=0, waves arms once like a "ta-da", and
+        /// emits a small white confetti puff at floor level.
+        /// </summary>
+        public IEnumerator PlaySpawnAnimation()
+        {
+            _spawning = true;
+
+            // Cache the starting transform so we end exactly where we began.
+            Vector3 endPos = transform.localPosition;
+            Vector3 startPos = endPos + new Vector3(0f, -0.3f, 0f);
+            transform.localPosition = startPos;
+            transform.localScale    = Vector3.zero;
+            transform.localRotation = Quaternion.identity;
+
+            // Reset arm rotations to their bind so we drive them cleanly.
+            if (_leftArm  != null) _leftArm.localRotation  = _baseLeftArmRot;
+            if (_rightArm != null) _rightArm.localRotation = _baseRightArmRot;
+
+            // Confetti puff at floor level (world position).
+            SpawnConfettiPuff(transform.position, new Color(1f, 1f, 1f));
+
+            const float dur = 1.2f;
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / dur);
+
+                // Elastic-ish ease: overshoot at ~0.7 and settle to 1.0.
+                // 0..0.7 -> 0..1.1, 0.7..1.0 -> 1.1..1.0
+                float scale;
+                if (k < 0.7f)
+                {
+                    float a = k / 0.7f;
+                    // ease-out cubic up to 1.1
+                    float e = 1f - Mathf.Pow(1f - a, 3f);
+                    scale = e * 1.1f;
+                }
+                else
+                {
+                    float a = (k - 0.7f) / 0.3f;
+                    scale = Mathf.Lerp(1.1f, 1.0f, a);
+                }
+                transform.localScale = new Vector3(scale, scale, scale);
+
+                // Rise.
+                float riseK = 1f - Mathf.Pow(1f - k, 2f);
+                transform.localPosition = Vector3.Lerp(startPos, endPos, riseK);
+
+                // Ta-da arm wave: lift both arms, peak around mid, return.
+                float wave = Mathf.Sin(k * Mathf.PI);
+                if (_leftArm != null)
+                    _leftArm.localRotation  = _baseLeftArmRot  * Quaternion.Euler(0f, 0f,  60f * wave);
+                if (_rightArm != null)
+                    _rightArm.localRotation = _baseRightArmRot * Quaternion.Euler(0f, 0f, -60f * wave);
+
+                yield return null;
+            }
+
+            // Snap to the bind pose.
+            transform.localScale    = Vector3.one;
+            transform.localPosition = endPos;
+            if (_leftArm  != null) _leftArm.localRotation  = _baseLeftArmRot;
+            if (_rightArm != null) _rightArm.localRotation = _baseRightArmRot;
+
+            _spawning = false;
+        }
+
+        /// <summary>
+        /// Wave-and-vanish leave. Right arm waves like a goodbye, then the
+        /// figure scales down ~30%, drifts upward and fades alpha to zero
+        /// (with a confetti puff). Caller should Destroy the GameObject after.
+        /// </summary>
+        public IEnumerator PlayLeaveAnimation()
+        {
+            _leaving = true;
+
+            // --- 1. Friendly wave (right arm up + side-to-side oscillation). ---
+            const float waveDur = 0.7f;
+            float t = 0f;
+            while (t < waveDur)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / waveDur);
+                // Ease-in then hold for the lift.
+                float lift = Mathf.SmoothStep(0f, 1f, Mathf.Min(1f, k * 1.4f));
+                // Side-to-side oscillation, ~3 cycles across the duration.
+                float osc  = Mathf.Sin(k * Mathf.PI * 6f) * 25f;
+
+                if (_rightArm != null)
+                {
+                    // Raise ~120 degrees on Z (arm pivots from shoulder, +Z lifts it up
+                    // on the right side). Add Y oscillation for the side-to-side wave.
+                    _rightArm.localRotation = _baseRightArmRot
+                        * Quaternion.Euler(0f, osc, -120f * lift);
+                }
+                if (_leftArm != null)
+                {
+                    _leftArm.localRotation = _baseLeftArmRot;
+                }
+                yield return null;
+            }
+
+            // --- 2. Cache per-renderer cloned materials so we can fade alpha. ---
+            var rends = GetComponentsInChildren<Renderer>(true);
+            var mats  = new Material[rends.Length];
+            for (int i = 0; i < rends.Length; i++)
+            {
+                if (rends[i] == null) continue;
+                // r.material auto-clones, so we don't mutate the shared paper mat.
+                mats[i] = rends[i].material;
+                TryMakeTransparent(mats[i]);
+            }
+
+            // --- 3. Confetti puff at the figure's position. ---
+            SpawnConfettiPuff(transform.position + Vector3.up * 0.6f, new Color(1f, 1f, 1f));
+
+            // --- 4. Fade + scale-down + drift-up. ---
+            Vector3 startScale = transform.localScale;
+            Vector3 endScale   = startScale * 0.7f;
+            Vector3 startPos   = transform.localPosition;
+            Vector3 endPos     = startPos + new Vector3(0f, 0.25f, 0f);
+
+            // Capture each material's starting color so we can lerp alpha cleanly.
+            var startColors = new Color[mats.Length];
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] == null) continue;
+                startColors[i] = mats[i].HasProperty("_BaseColor")
+                    ? mats[i].GetColor("_BaseColor")
+                    : mats[i].color;
+            }
+
+            const float fadeDur = 0.8f;
+            t = 0f;
+            while (t < fadeDur)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / fadeDur);
+
+                transform.localScale    = Vector3.Lerp(startScale, endScale, k);
+                transform.localPosition = Vector3.Lerp(startPos,   endPos,   k);
+
+                float a = 1f - k;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null) continue;
+                    Color c = startColors[i];
+                    c.a = startColors[i].a * a;
+                    if (mats[i].HasProperty("_BaseColor")) mats[i].SetColor("_BaseColor", c);
+                    else mats[i].color = c;
+                }
+
+                // Hold the wave overhead while fading (tapers off quickly).
+                if (_rightArm != null)
+                {
+                    float holdLift = 1f - k;
+                    _rightArm.localRotation = _baseRightArmRot
+                        * Quaternion.Euler(0f, 0f, -120f * holdLift);
+                }
+
+                yield return null;
+            }
+
+            // Final state: invisible. Hide all renderers as a hard guarantee in
+            // case alpha didn't actually go transparent on opaque-pipeline mats.
+            for (int i = 0; i < rends.Length; i++)
+            {
+                if (rends[i] != null) rends[i].enabled = false;
+            }
+
+            // Don't Destroy ourselves — caller does that.
+        }
+
+        /// <summary>
+        /// Try to flip a URP/Lit (or Standard) material into transparent
+        /// blend so an alpha lerp is visible. Best-effort: if none of the
+        /// expected properties exist we just leave it; the leave animation
+        /// also disables renderers at the end as a fallback.
+        /// </summary>
+        private static void TryMakeTransparent(Material m)
+        {
+            if (m == null) return;
+
+            // URP Lit / Unlit: _Surface 0=Opaque, 1=Transparent.
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
+            if (m.HasProperty("_Blend"))   m.SetFloat("_Blend", 0f);   // Alpha
+            if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (m.HasProperty("_DstBlend")) m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (m.HasProperty("_ZWrite"))   m.SetFloat("_ZWrite", 0f);
+            if (m.HasProperty("_AlphaClip")) m.SetFloat("_AlphaClip", 0f);
+
+            m.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.EnableKeyword("_ALPHABLEND_ON");
+            m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        }
+
+        /// <summary>
+        /// Procedural one-shot particle puff — small white cubes spraying
+        /// outward. Pattern matches ProfessorTutorial.SpawnLightningEffect.
+        /// </summary>
+        private void SpawnConfettiPuff(Vector3 worldPos, Color tint)
+        {
+            var go = new GameObject("PaperConfettiFx");
+            // Detach from this transform — we may be destroyed soon, and the
+            // FX should outlive us long enough to play out.
+            go.transform.position = worldPos;
+
+            var ps  = go.AddComponent<ParticleSystem>();
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+
+            var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
+            var mat = new Material(sh);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            else mat.color = tint;
+            psr.sharedMaterial = mat;
+
+            // Use the default billboard render mode — small white squares look
+            // like paper confetti without needing a custom mesh.
+            psr.renderMode = ParticleSystemRenderMode.Billboard;
+
+            var main = ps.main;
+            main.playOnAwake     = false;
+            main.duration        = 0.3f;
+            main.loop            = false;
+            main.startLifetime   = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
+            main.startSpeed      = new ParticleSystem.MinMaxCurve(1.2f, 2.4f);
+            main.startSize       = new ParticleSystem.MinMaxCurve(0.025f, 0.06f);
+            main.startColor      = new ParticleSystem.MinMaxGradient(
+                new Color(1f, 1f, 1f), new Color(0.95f, 0.92f, 0.85f));
+            main.maxParticles    = 60;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.gravityModifier = new ParticleSystem.MinMaxCurve(0.6f);
+
+            var emission = ps.emission;
+            emission.enabled      = true;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 40) });
+
+            var shape = ps.shape;
+            shape.enabled    = true;
+            shape.shapeType  = ParticleSystemShapeType.Sphere;
+            shape.radius     = 0.08f;
+
+            ps.Play();
+            Destroy(go, 1.5f);
         }
     }
 }
