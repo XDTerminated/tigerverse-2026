@@ -151,9 +151,9 @@ namespace Tigerverse.EditorTools
 
                 int re = 0;
                 foreach (var c in origin.gameObject.GetComponentsInChildren<ContinuousMoveProvider>(true)) { c.enabled = true; re++; }
-                // Prefer smooth (continuous) turning over snap. Disable snap, enable continuous.
-                foreach (var c in origin.gameObject.GetComponentsInChildren<SnapTurnProvider>(true)) { c.enabled = false; re++; }
-                foreach (var c in origin.gameObject.GetComponentsInChildren<ContinuousTurnProvider>(true)) { c.enabled = true; re++; }
+                // Snap turn is the project default; continuous turn stays off.
+                foreach (var c in origin.gameObject.GetComponentsInChildren<SnapTurnProvider>(true)) { c.enabled = true; re++; }
+                foreach (var c in origin.gameObject.GetComponentsInChildren<ContinuousTurnProvider>(true)) { c.enabled = false; re++; }
 
                 var fmc = origin.GetComponent<FlatMoveController>();
                 if (fmc == null) origin.gameObject.AddComponent<FlatMoveController>();

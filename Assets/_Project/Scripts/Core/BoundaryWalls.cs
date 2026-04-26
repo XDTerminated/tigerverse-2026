@@ -14,7 +14,7 @@ namespace TigerVerse.Core
         public Vector3 areaCenter = Vector3.zero;
 
         [Tooltip("Width (X) and depth (Z) of the bounded rectangle in metres.")]
-        public Vector2 areaSize = new Vector2(8f, 8f);
+        public Vector2 areaSize = new Vector2(36f, 36f);
 
         [Tooltip("Vertical extent of each wall (so the player cannot crouch under).")]
         public float wallHeight = 4f;

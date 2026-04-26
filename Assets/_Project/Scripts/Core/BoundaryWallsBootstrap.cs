@@ -34,7 +34,9 @@ namespace TigerVerse.Core
             go.transform.rotation = Quaternion.identity;
 
             BoundaryWalls walls = go.AddComponent<BoundaryWalls>();
-            walls.Configure(Vector3.zero, new Vector2(8f, 8f), 4f);
+            // Match the visible floor (40x40m) but inset slightly so walls sit just inside
+            // the edge rather than exactly on it. Floor is built by TigerverseLobbyEnvironment.
+            walls.Configure(Vector3.zero, new Vector2(36f, 36f), 4f);
         }
     }
 }

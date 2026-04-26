@@ -53,12 +53,7 @@ namespace Tigerverse.EditorTools
             }
             Debug.Log($"[Tigerverse] Enabled UI interaction on {enabledCount} interactor(s).");
 
-            // Disable joystick *move* + snap turn so sticks don't slide you off the canvas,
-            // but LEAVE continuous turn alone — that's the player's only way to face the
-            // world after the title sequence. Earlier this also disabled ContinuousTurnProvider,
-            // which silently broke right-stick rotation. If you want to lock turning too, do
-            // it from a runtime gate (e.g. GameStateManager) so it only applies in scenes
-            // that actually need it, not stamped into every saved scene by an editor menu.
+            // Disable joystick locomotion so sticks don't slide you off the canvas.
             int disabled = 0;
             foreach (var c in origin.gameObject.GetComponentsInChildren<ContinuousMoveProvider>(true))
             {
@@ -68,14 +63,11 @@ namespace Tigerverse.EditorTools
             {
                 c.enabled = false; disabled++;
             }
-            // Make sure continuous turn is ON (don't trust whatever previous run of this
-            // menu may have left disabled in the scene file).
-            int turnEnabled = 0;
             foreach (var c in origin.gameObject.GetComponentsInChildren<ContinuousTurnProvider>(true))
             {
-                if (!c.enabled) { c.enabled = true; turnEnabled++; }
+                c.enabled = false; disabled++;
             }
-            Debug.Log($"[Tigerverse] Disabled {disabled} locomotion provider(s); re-enabled {turnEnabled} continuous turn provider(s).");
+            Debug.Log($"[Tigerverse] Disabled {disabled} locomotion provider(s).");
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);

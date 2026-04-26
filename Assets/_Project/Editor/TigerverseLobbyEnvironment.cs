@@ -34,26 +34,29 @@ namespace Tigerverse.EditorTools
 
             var root = new GameObject("LobbyEnv");
 
-            // Floor: 10x10 cube, slightly below ground plane.
+            // Floor: 40x40m cube slab, slightly below ground plane. Made large so players
+            // can wander freely in VR without falling off the visible platform.
+            const float floorSize = 40f;
             var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
             floor.name = "Floor";
             floor.transform.SetParent(root.transform, false);
             floor.transform.localPosition = new Vector3(0, -0.05f, 0);
-            floor.transform.localScale = new Vector3(10f, 0.1f, 10f);
+            floor.transform.localScale = new Vector3(floorSize, 0.1f, floorSize);
             var floorMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             floorMat.color = new Color(0.25f, 0.28f, 0.32f);
             floor.GetComponent<Renderer>().sharedMaterial = floorMat;
 
             // Grid lines so players can perceive movement against the floor.
-            int gridLines = 9;
-            for (int i = -gridLines/2; i <= gridLines/2; i++)
+            // Span the full new floor so the grid is visible edge-to-edge.
+            int halfLines = Mathf.FloorToInt(floorSize * 0.5f) - 1;
+            for (int i = -halfLines; i <= halfLines; i++)
             {
                 if (i == 0) continue;
                 var lineX = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 lineX.name = $"GridX{i}";
                 lineX.transform.SetParent(root.transform, false);
                 lineX.transform.localPosition = new Vector3(i, 0.001f, 0);
-                lineX.transform.localScale = new Vector3(0.02f, 0.02f, 10f);
+                lineX.transform.localScale = new Vector3(0.02f, 0.02f, floorSize);
                 var lineMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
                 lineMat.color = new Color(0.4f, 0.45f, 0.5f);
                 lineX.GetComponent<Renderer>().sharedMaterial = lineMat;
@@ -63,7 +66,7 @@ namespace Tigerverse.EditorTools
                 lineZ.name = $"GridZ{i}";
                 lineZ.transform.SetParent(root.transform, false);
                 lineZ.transform.localPosition = new Vector3(0, 0.001f, i);
-                lineZ.transform.localScale = new Vector3(10f, 0.02f, 0.02f);
+                lineZ.transform.localScale = new Vector3(floorSize, 0.02f, 0.02f);
                 lineZ.GetComponent<Renderer>().sharedMaterial = lineMat;
                 Object.DestroyImmediate(lineZ.GetComponent<Collider>());
             }
