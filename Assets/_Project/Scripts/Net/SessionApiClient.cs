@@ -75,6 +75,7 @@ namespace Tigerverse.Net
             }
 
             string url = config.backendBaseUrl.TrimEnd('/') + "/api/session/" + UnityWebRequest.EscapeURL(code);
+            Debug.Log($"[SessionApiClient] GET {url}");
             using (var req = UnityWebRequest.Get(url))
             {
                 req.timeout = 10;
@@ -88,11 +89,13 @@ namespace Tigerverse.Net
 #endif
                 if (isError || req.responseCode >= 400)
                 {
+                    Debug.LogWarning($"[SessionApiClient] GET {url} → HTTP {req.responseCode} result={req.result} err='{req.error}'");
                     onComplete?.Invoke(null, $"HTTP {req.responseCode}: {req.error}");
                     yield break;
                 }
 
                 string text = req.downloadHandler != null ? req.downloadHandler.text : null;
+                Debug.Log($"[SessionApiClient] GET {url} → HTTP {req.responseCode} body={(text == null ? "null" : text.Length + " chars")}");
                 if (string.IsNullOrEmpty(text))
                 {
                     onComplete?.Invoke(null, "Empty response body");
