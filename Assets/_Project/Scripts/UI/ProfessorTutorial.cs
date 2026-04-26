@@ -256,7 +256,10 @@ namespace Tigerverse.UI
                 // Subtitle stays parented to the professor so it tracks any
                 // bobbing / movement the figure has during speech.
                 lblGo.transform.SetParent(profGo.transform, false);
-                lblGo.transform.localPosition = new Vector3(0, 1.45f, 0);
+                // Subtitle sits above the hat (hat top is around y=1.47).
+                // Bumped from 1.45 to 1.95 so the professor's words don't get
+                // clipped by the cone of the wizard hat.
+                lblGo.transform.localPosition = new Vector3(0, 1.95f, 0);
                 subtitleLabel = lblGo.AddComponent<TMPro.TextMeshPro>();
                 subtitleLabel.text = "";
                 subtitleLabel.fontSize = 0.5f;
@@ -446,43 +449,45 @@ namespace Tigerverse.UI
         private void SpawnDummy()
         {
             if (_dummy != null) return;
-            // Procedural paper-craft target dummy: head ball + body cylinder
-            // + a tiny X face, painted plain white. Sits 1.7m further from
-            // the player than the Professor (1.2m further than the borrowed
-            // scribble), facing BACK toward the player so its X eyes are
-            // visible — and so it reads as the scribble's target.
+            // Practice dummy now mirrors the professor's procedural body
+            // (legs, torso, head, arms) so it reads as a blank paper figure
+            // standing in for an opponent. Strip the hat, brim, face, and
+            // floating name tag so it doesn't look like a clone of the
+            // professor. Sits 1.7m further from the player.
             var root = new GameObject("PracticeDummy");
             root.transform.SetParent(transform, worldPositionStays: true);
             root.transform.position = _stageCenter - _stageForward * 1.7f;
-            // Face back toward the player (and therefore back toward the
-            // scribble that's "attacking" it). _stageForward points
-            // stage->player, so a LookRotation along _stageForward orients
-            // the dummy's forward axis at the player.
             if (_stageForward.sqrMagnitude > 1e-4f)
                 root.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
             else
                 root.transform.rotation = Quaternion.Euler(0, 90f, 0);
 
-            var sh = Shader.Find("Universal Render Pipeline/Lit");
-            var paperMat = new Material(sh);
-            if (paperMat.HasProperty("_BaseColor")) paperMat.SetColor("_BaseColor", new Color(0.97f, 0.95f, 0.91f));
-            else paperMat.color = new Color(0.97f, 0.95f, 0.91f);
+            // PaperProfessor.Awake builds the body during AddComponent.
+            var prof = root.AddComponent<Tigerverse.UI.PaperProfessor>();
 
-            var darkMat = new Material(sh);
-            if (darkMat.HasProperty("_BaseColor")) darkMat.SetColor("_BaseColor", new Color(0.10f, 0.10f, 0.12f));
-            else darkMat.color = new Color(0.10f, 0.10f, 0.12f);
+            // Strip everything that would identify it as the professor.
+            foreach (var stripName in new[] { "Hat", "HatBrim", "Face", "BillboardLabel" })
+            {
+                StripChildrenNamed(root.transform, stripName);
+            }
 
-            MakePrim(root.transform, PrimitiveType.Cylinder, paperMat, "Body", new Vector3(0, 0.30f, 0), new Vector3(0.26f, 0.30f, 0.26f));
-            MakePrim(root.transform, PrimitiveType.Sphere,   paperMat, "Head", new Vector3(0, 0.72f, 0), new Vector3(0.26f, 0.26f, 0.26f));
-
-            // Eyes — two black X marks (just two thin cubes crossing).
-            var head = root.transform.Find("Head");
-            MakePrim(head, PrimitiveType.Cube, darkMat, "EyeLA", new Vector3(-0.07f, 0.0f, -0.12f), new Vector3(0.04f, 0.005f, 0.005f), Quaternion.Euler(0, 0,  35f));
-            MakePrim(head, PrimitiveType.Cube, darkMat, "EyeLB", new Vector3(-0.07f, 0.0f, -0.12f), new Vector3(0.04f, 0.005f, 0.005f), Quaternion.Euler(0, 0, -35f));
-            MakePrim(head, PrimitiveType.Cube, darkMat, "EyeRA", new Vector3( 0.07f, 0.0f, -0.12f), new Vector3(0.04f, 0.005f, 0.005f), Quaternion.Euler(0, 0,  35f));
-            MakePrim(head, PrimitiveType.Cube, darkMat, "EyeRB", new Vector3( 0.07f, 0.0f, -0.12f), new Vector3(0.04f, 0.005f, 0.005f), Quaternion.Euler(0, 0, -35f));
+            // Disable the script so the dummy doesn't idle-bob / sway / nod.
+            if (prof != null) Destroy(prof);
 
             _dummy = root;
+        }
+
+        private static void StripChildrenNamed(Transform root, string name)
+        {
+            var matches = new System.Collections.Generic.List<Transform>();
+            CollectByName(root, name, matches);
+            foreach (var t in matches) Destroy(t.gameObject);
+        }
+        private static void CollectByName(Transform root, string name, System.Collections.Generic.List<Transform> outList)
+        {
+            if (root.name == name) outList.Add(root);
+            for (int i = 0; i < root.childCount; i++)
+                CollectByName(root.GetChild(i), name, outList);
         }
 
         private static Transform MakePrim(Transform parent, PrimitiveType t, Material mat, string name, Vector3 pos, Vector3 scale, Quaternion? rot = null)

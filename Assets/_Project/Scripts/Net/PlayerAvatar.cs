@@ -32,10 +32,14 @@ namespace Tigerverse.Net
         {
             DontDestroyOnLoad(gameObject);
 
-            // Tint by player number so players can tell each other apart.
+            // Tint by player number — match the spawn pad disc colors set up
+            // in TigerverseLobbyEnvironment so each player's body color
+            // visually matches the floor pad they spawn on.
             int pid = Object.InputAuthority.PlayerId;
-            Color tint = pid == 0 ? new Color(0.30f, 0.55f, 1.00f) : new Color(1.00f, 0.45f, 0.55f);
-            Color accent = pid == 0 ? new Color(0.10f, 0.20f, 0.55f) : new Color(0.55f, 0.10f, 0.20f);
+            Color tint = pid == 0 ? new Color(0.20f, 0.70f, 1.00f)  // SpawnP0 cyan
+                                  : new Color(1.00f, 0.40f, 0.60f); // SpawnP1 pink
+            Color accent = pid == 0 ? new Color(0.05f, 0.30f, 0.55f)
+                                    : new Color(0.55f, 0.10f, 0.30f);
             if (colorTargets != null)
             {
                 foreach (var r in colorTargets)

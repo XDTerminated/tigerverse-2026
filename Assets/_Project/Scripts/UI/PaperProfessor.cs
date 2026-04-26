@@ -48,34 +48,48 @@ namespace Tigerverse.UI
             // Cache shared materials.
             Material paperMat   = MakePaperMaterial(new Color(0.97f, 0.95f, 0.91f));
             Material darkMat    = MakeUnlitColor(new Color(0.10f, 0.10f, 0.12f));
-            Material accentMat  = MakeUnlitColor(new Color(0.22f, 0.18f, 0.55f));   // wizard-y purple
+            // Pastel lavender hat, much softer than the original deep wizard
+            // purple so it reads as a doodle accent rather than a costume.
+            Material accentMat  = MakeUnlitColor(new Color(0.78f, 0.72f, 0.95f));
             Material mouthMat   = MakeUnlitColor(new Color(0.06f, 0.05f, 0.08f));
 
-            _body = MakePrim(PrimitiveType.Cylinder, paperMat, "Body", localPos: new Vector3(0, 0.35f, 0), localScale: new Vector3(0.32f, 0.35f, 0.32f));
+            // Body lifted to sit on top of the legs. Legs hang from y=0.35
+            // (body bottom) down to y=0, so the figure stands on the ground.
+            _body = MakePrim(PrimitiveType.Cylinder, paperMat, "Body", localPos: new Vector3(0, 0.62f, 0), localScale: new Vector3(0.32f, 0.27f, 0.32f));
 
-            _head = MakePrim(PrimitiveType.Sphere, paperMat, "Head", localPos: new Vector3(0, 0.92f, 0), localScale: new Vector3(0.46f, 0.46f, 0.46f));
+            // Two stubby legs so the professor reads as standing instead of
+            // hovering. Mirrors the PaperHumanoid leg setup.
+            MakePrim(PrimitiveType.Cylinder, paperMat, "LegL",
+                localPos: new Vector3(-0.10f, 0.18f, 0f),
+                localScale: new Vector3(0.10f, 0.18f, 0.10f));
+            MakePrim(PrimitiveType.Cylinder, paperMat, "LegR",
+                localPos: new Vector3( 0.10f, 0.18f, 0f),
+                localScale: new Vector3(0.10f, 0.18f, 0.10f));
+
+            _head = MakePrim(PrimitiveType.Sphere, paperMat, "Head", localPos: new Vector3(0, 1.10f, 0), localScale: new Vector3(0.46f, 0.46f, 0.46f));
             _baseHeadLocal = _head.localPosition;
             _baseHeadRot   = _head.localRotation;
 
-            // Wizard hat, cone-ish (use a cylinder with a tapered scale to fake a cone).
-            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.32f, 0), localScale: new Vector3(0.28f, 0.30f, 0.28f));
+            // Wizard hat — shorter cone so it reads as a beanie/short cap
+            // rather than a tall sorcerer hat. Sits just above the head.
+            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.40f, 0), localScale: new Vector3(0.28f, 0.13f, 0.28f));
             _hat.SetParent(_head, worldPositionStays: true);
 
             // Hat brim (flat cylinder underneath).
-            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 1.08f, 0), localScale: new Vector3(0.50f, 0.014f, 0.50f));
+            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 1.26f, 0), localScale: new Vector3(0.50f, 0.014f, 0.50f));
             brim.SetParent(_head, worldPositionStays: true);
 
             // Face: hand-drawn doodle face on a quad pinned to the front of
             // the head sphere. Replaces the old eye + mouth primitives.
             BuildFaceQuad(_head);
 
-            // Floating "Professor" name tag above the hat, billboards to the
-            // local camera each frame.
-            Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 1.55f);
+            // Floating "Professor" name tag, sits above the (now shorter)
+            // hat. Billboards to the local camera each frame.
+            Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 1.75f);
 
-            // Arms, two thin elongated cubes with rotation pivots near the shoulder.
-            _leftArm  = MakeArm(name: "ArmL", paperMat, shoulder: new Vector3(-0.20f, 0.62f, 0f), tilt: 18f);
-            _rightArm = MakeArm(name: "ArmR", paperMat, shoulder: new Vector3( 0.20f, 0.62f, 0f), tilt: -18f);
+            // Arms — shoulders moved up to match the lifted body.
+            _leftArm  = MakeArm(name: "ArmL", paperMat, shoulder: new Vector3(-0.20f, 0.82f, 0f), tilt: 18f);
+            _rightArm = MakeArm(name: "ArmR", paperMat, shoulder: new Vector3( 0.20f, 0.82f, 0f), tilt: -18f);
             _baseLeftArmRot  = _leftArm.localRotation;
             _baseRightArmRot = _rightArm.localRotation;
         }
@@ -166,25 +180,24 @@ namespace Tigerverse.UI
         private static Material MakeFaceMaterial()
         {
             if (_faceMat != null) return _faceMat;
-            var sh = Shader.Find("Universal Render Pipeline/Unlit");
-            if (sh == null) sh = Shader.Find("Unlit/Transparent");
+            // Use the legacy Unlit/Transparent shader: it's hardcoded to alpha
+            // blend, so the face PNG's transparent areas reliably show the
+            // head sphere through, no shader-variant gymnastics needed. The
+            // earlier URP/Unlit + SetFloat("_Surface", 1) approach silently
+            // rendered opaque (you'd see a black rectangle around the face)
+            // because the transparent variant gets stripped at build.
+            var sh = Shader.Find("Unlit/Transparent");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
             _faceMat = new Material(sh);
             var face = Resources.Load<Texture2D>("face");
             if (face != null)
             {
-                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
+                _faceMat.mainTexture = face;
                 if (_faceMat.HasProperty("_MainTex")) _faceMat.SetTexture("_MainTex", face);
+                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
             }
+            if (_faceMat.HasProperty("_Color")) _faceMat.SetColor("_Color", Color.white);
             if (_faceMat.HasProperty("_BaseColor")) _faceMat.SetColor("_BaseColor", Color.white);
-            // Switch URP/Unlit to transparent surface so the face's alpha
-            // shows the head sphere through the empty space.
-            if (_faceMat.HasProperty("_Surface")) _faceMat.SetFloat("_Surface", 1f);   // 0 opaque, 1 transparent
-            if (_faceMat.HasProperty("_Blend")) _faceMat.SetFloat("_Blend", 0f);       // 0 alpha
-            if (_faceMat.HasProperty("_SrcBlend")) _faceMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            if (_faceMat.HasProperty("_DstBlend")) _faceMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            if (_faceMat.HasProperty("_ZWrite")) _faceMat.SetFloat("_ZWrite", 0f);
-            _faceMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            _faceMat.renderQueue = 3000;
             return _faceMat;
         }
 

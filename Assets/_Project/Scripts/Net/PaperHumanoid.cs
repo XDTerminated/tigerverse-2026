@@ -189,25 +189,22 @@ namespace Tigerverse.Net
         private static Material MakeFaceMaterial()
         {
             if (_faceMat != null) return _faceMat;
-            var sh = Shader.Find("Universal Render Pipeline/Unlit");
-            if (sh == null) sh = Shader.Find("Unlit/Transparent");
+            // Legacy Unlit/Transparent: hardcoded alpha blending, no shader
+            // variant gymnastics. URP/Unlit + SetFloat("_Surface", 1) was
+            // silently rendering opaque (black square around the face)
+            // because the transparent variant gets stripped at build.
+            var sh = Shader.Find("Unlit/Transparent");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
             _faceMat = new Material(sh);
             var face = Resources.Load<Texture2D>("face");
             if (face != null)
             {
-                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
+                _faceMat.mainTexture = face;
                 if (_faceMat.HasProperty("_MainTex")) _faceMat.SetTexture("_MainTex", face);
+                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
             }
+            if (_faceMat.HasProperty("_Color")) _faceMat.SetColor("_Color", Color.white);
             if (_faceMat.HasProperty("_BaseColor")) _faceMat.SetColor("_BaseColor", Color.white);
-            // URP/Unlit transparent surface so the face's alpha cuts out
-            // correctly against the head sphere underneath.
-            if (_faceMat.HasProperty("_Surface")) _faceMat.SetFloat("_Surface", 1f);
-            if (_faceMat.HasProperty("_Blend")) _faceMat.SetFloat("_Blend", 0f);
-            if (_faceMat.HasProperty("_SrcBlend")) _faceMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            if (_faceMat.HasProperty("_DstBlend")) _faceMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            if (_faceMat.HasProperty("_ZWrite")) _faceMat.SetFloat("_ZWrite", 0f);
-            _faceMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            _faceMat.renderQueue = 3000;
             return _faceMat;
         }
 

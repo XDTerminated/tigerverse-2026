@@ -22,16 +22,11 @@ export async function createImageTo3dTask(imageDataUri: string): Promise<string>
     },
     body: JSON.stringify({
       image_url: imageDataUri,
-      should_texture: false,    // we triplanar-tint in Unity instead
-      target_formats: ['glb'],
-      ai_model: 'meshy-6',      // meshy-6 has much better depth inference for 2D doodles
-      model_type: 'standard',   // not lowpoly, gives proper rounded volumes
-      should_remesh: true,      // proper 3D topology instead of cookie-cut extrusion
-      topology: 'quad',
-      target_polycount: 30000,
-      symmetry_mode: 'auto',
-      image_enhancement: true,  // server-side preprocess
-      remove_lighting: true,
+      should_texture: false,        // we triplanar-tint in Unity instead
+      should_remesh: false,         // turbo handles its own topology, skip our remesh
+      image_enhancement: false,     // turbo path runs faster without server preprocess
+      remove_lighting: false,
+      experimental: { turbo: true } // experimental turbo path for faster generation
     }),
   });
 
