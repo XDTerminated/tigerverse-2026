@@ -21,7 +21,7 @@ namespace Tigerverse.Voice
         [SerializeField] private int   casterIndex;
         [SerializeField] private int   sampleRate     = 16000;
         [SerializeField] private int   maxRecordSec   = 6;
-        [SerializeField] private float matchThreshold = 0.35f;
+        [SerializeField] private float matchThreshold = 0.50f;
 
         [Tooltip("Substring to prefer when picking the mic. e.g. 'Quest' for the headset, 'Realtek' or empty for the laptop. If empty, the first device is used.")]
         [SerializeField] private string preferredMicSubstring = "";
@@ -225,6 +225,24 @@ namespace Tigerverse.Voice
         {
             openMicMode = on;
             Debug.Log($"[VoiceCommandRouter] openMicMode = {on}");
+        }
+
+        /// <summary>
+        /// Force the mic to restart cleanly. Stops any in-flight VAD session,
+        /// re-picks the device (in case it changed mid-session), and lets the
+        /// next Update tick re-open the stream. Use at battle start so we
+        /// don't inherit a wedged mic state from the tutorial / ready-handshake
+        /// teardown sequence.
+        /// </summary>
+        public void RestartMic()
+        {
+            Debug.Log($"[VoiceCommandRouter] RestartMic invoked.");
+            if (_vadStarted) StopVad();
+            try { if (!string.IsNullOrEmpty(micDeviceName)) Microphone.End(micDeviceName); } catch { }
+            isRecording = false;
+            _vadInSpeech = false;
+            _muted = false;
+            PickMicDevice();
         }
 
         // Mute gate, used by the Professor tutorial (and combat announcer)
@@ -558,6 +576,7 @@ namespace Tigerverse.Voice
 
         private void MatchAndCast(string transcript)
         {
+            Debug.Log($"[Voice] MatchAndCast entered. transcript='{transcript}' availableMoves={(availableMoves?.Length ?? -1)} battle={(battle != null ? "OK" : "NULL")}");
             if (string.IsNullOrWhiteSpace(transcript))
             {
                 OnNoMatch?.Invoke(string.Empty);
@@ -565,6 +584,7 @@ namespace Tigerverse.Voice
             }
             if (availableMoves == null || availableMoves.Length == 0)
             {
+                Debug.LogWarning("[Voice] No available moves bound — match aborted. Bind() may not have been called with a moveset.");
                 OnNoMatch?.Invoke(transcript);
                 return;
             }
@@ -599,7 +619,7 @@ namespace Tigerverse.Voice
 
             if (bestMove != null && (bestSubstring || bestScore < matchThreshold))
             {
-                Debug.Log($"[Voice] Match → '{bestMove.displayName}', battle={(battle!=null?"OK":"NULL")}, casterIdx={casterIndex}");
+                Debug.Log($"[Voice] Match → '{bestMove.displayName}' (sub={bestSubstring} score={bestScore:F2}), battle={(battle!=null?"OK":"NULL")}, casterIdx={casterIndex}");
 
                 // Per-move cooldown gate. Each move locks itself out for
                 // bestMove.cooldownSeconds after a successful cast, stronger
@@ -612,12 +632,20 @@ namespace Tigerverse.Voice
                     return;
                 }
 
-                if (battle != null) battle.SubmitMove(bestMove, casterIndex);
+                if (battle != null)
+                {
+                    battle.SubmitMove(bestMove, casterIndex);
+                }
+                else
+                {
+                    Debug.LogWarning($"[Voice] Match for '{bestMove.displayName}' but battle ref is NULL — damage cannot be applied. Check VoiceCommandRouter.Bind() was called with a real BattleManager.");
+                }
                 _nextCastAt[bestMove] = Time.time + Mathf.Max(0f, bestMove.cooldownSeconds);
                 OnMoveCast?.Invoke(bestMove);
             }
             else
             {
+                Debug.Log($"[Voice] No match for '{text}'. bestMove={(bestMove != null ? bestMove.displayName : "<none>")} bestScore={bestScore:F2} bestSub={bestSubstring} threshold={matchThreshold}");
                 OnNoMatch?.Invoke(transcript);
             }
         }

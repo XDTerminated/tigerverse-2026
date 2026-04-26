@@ -437,6 +437,12 @@ namespace Tigerverse.Core
                     // a hot mic that listens for move names.
                     voiceRouter.SetMuted(false);
                     voiceRouter.SetOpenMicMode(true);
+                    // Force the mic to restart cleanly so we don't inherit a
+                    // wedged VAD state (e.g. mic ended by ReadyHandshake but
+                    // not re-opened, or device pick stale from before XR
+                    // initialized). Without this, the player can shout into
+                    // a dead mic and nothing transcribes.
+                    voiceRouter.RestartMic();
 
                     // Announce the local player's moves via TTS so they know what to call out.
                     var ann = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
