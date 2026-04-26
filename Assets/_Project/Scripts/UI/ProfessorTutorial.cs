@@ -147,6 +147,7 @@ namespace Tigerverse.UI
             {
                 voiceRouter.OnTranscript.RemoveListener(OnPlayerSpoke);
                 voiceRouter.OnTranscript.RemoveListener(OnPracticeTranscript);
+                voiceRouter.OnTranscript.RemoveListener(OnGuidedMoveTranscript);
                 voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
                 voiceRouter.SetOpenMicMode(false); // restore push-to-talk for combat
             }
@@ -155,6 +156,8 @@ namespace Tigerverse.UI
                 Destroy(_practiceHud.gameObject);
                 _practiceHud = null;
             }
+            _dummy = null;
+            _borrowedScribble = null;
         }
 
         public void Stop()
@@ -186,10 +189,16 @@ namespace Tigerverse.UI
         private IEnumerator LeaveSequence()
         {
             // Stop continuous practice listeners immediately.
-            if (_continuousPractice && voiceRouter != null)
+            if (voiceRouter != null)
             {
-                voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
-                _continuousPractice = false;
+                if (_continuousPractice)
+                {
+                    voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
+                    _continuousPractice = false;
+                }
+                // Defensive — clear any guided-tutorial listener too in case
+                // we leave mid-window.
+                voiceRouter.OnTranscript.RemoveListener(OnGuidedMoveTranscript);
             }
             if (_practiceHud != null)
             {
@@ -536,6 +545,122 @@ namespace Tigerverse.UI
             }
 
             yield return PerformThunderBolt();
+
+            // Guided tour through other moves — professor names each one,
+            // player shouts it, custom animation plays. Falls through into
+            // freeform practice at the end.
+            if (!_stopRequested) yield return RunGuidedMoveTutorial();
+        }
+
+        // ─── Guided move tutorial ───────────────────────────────────────
+        // After the scripted thunderbolt, the professor walks the player
+        // through 4 more moves — calling each by name, listening for the
+        // player to shout it, and firing a unique animation. If the player
+        // doesn't say it within the listen window the professor demos it
+        // anyway so the player still SEES what each move looks like.
+        private IEnumerator RunGuidedMoveTutorial()
+        {
+            // Make sure the dummy is still standing (it should be — we no
+            // longer destroy it in PerformThunderBolt).
+            if (_dummy == null) SpawnDummy();
+
+            var sequence = new (string moveKey, string promptLine)[]
+            {
+                ("fireball",  "Now try a Fireball! Just shout the name."),
+                ("water gun", "Beautifully done. Try Water Gun next."),
+                ("ice shard", "You're a natural. How about an Ice Shard?"),
+                ("leaf blade","Try Leaf Blade. It's a quick slash."),
+            };
+
+            for (int i = 0; i < sequence.Length; i++)
+            {
+                if (_stopRequested) yield break;
+                var entry = sequence[i];
+                yield return SpeakLine(entry.promptLine);
+                if (_stopRequested) yield break;
+                yield return RunSpecificMoveListenWindow(entry.moveKey, 12f);
+            }
+
+            if (_stopRequested) yield break;
+            yield return SpeakLine("You've got the basics! Keep practicing on the dummy. Just shout any move name.");
+        }
+
+        // One-shot listening window for a SPECIFIC move keyword. If the
+        // player says the move within listenSec, we fire its custom anim.
+        // If they don't, the professor says a soft prompt and demos the
+        // move himself so the player still gets to see it.
+        private string _guidedMoveExpected;
+        private bool   _guidedMoveTriggered;
+
+        private IEnumerator RunSpecificMoveListenWindow(string moveKey, float listenSec)
+        {
+            if (string.IsNullOrEmpty(moveKey)) yield break;
+
+            _guidedMoveExpected  = moveKey.ToLowerInvariant();
+            _guidedMoveTriggered = false;
+
+            string subtitleName = moveKey.ToUpperInvariant();
+            ShowSubtitle($"(Shout: {subtitleName}!)");
+
+            bool listening = false;
+            if (voiceRouter != null)
+            {
+                voiceRouter.OnTranscript.AddListener(OnGuidedMoveTranscript);
+                listening = true;
+            }
+
+            float t = 0f;
+            while (t < listenSec && !_guidedMoveTriggered && !_stopRequested)
+            {
+                t += Time.deltaTime;
+                yield return null;
+            }
+
+            if (listening && voiceRouter != null)
+            {
+                voiceRouter.OnTranscript.RemoveListener(OnGuidedMoveTranscript);
+            }
+
+            if (_stopRequested) yield break;
+
+            if (!_guidedMoveTriggered)
+            {
+                yield return SpeakLine("That's alright, let me show you.");
+            }
+
+            // Fire the custom animation either way (player-cast or demo).
+            yield return PlayMoveAnimation(moveKey);
+        }
+
+        private void OnGuidedMoveTranscript(string transcript)
+        {
+            if (_guidedMoveTriggered) return;
+            if (string.IsNullOrEmpty(transcript) || string.IsNullOrEmpty(_guidedMoveExpected)) return;
+            string lower = transcript.ToLowerInvariant();
+
+            // Match against the expected key. Accept both spaced and
+            // run-together variants so "fireball" / "fire ball" / "ice
+            // shard" / "iceshard" all hit.
+            string spaced  = _guidedMoveExpected;
+            string crushed = spaced.Replace(" ", "");
+
+            bool match = lower.Contains(spaced) || lower.Contains(crushed);
+
+            // Per-move synonym fallbacks — voice transcripts are often
+            // missing the second word. Lenient matching here matches the
+            // existing thunderbolt handler's spirit.
+            if (!match)
+            {
+                switch (crushed)
+                {
+                    case "fireball":  match = lower.Contains("fire");  break;
+                    case "watergun":  match = lower.Contains("water"); break;
+                    case "iceshard":  match = lower.Contains("ice");   break;
+                    case "leafblade": match = lower.Contains("leaf") || lower.Contains("blade"); break;
+                }
+            }
+
+            if (match) _guidedMoveTriggered = true;
         }
 
         private void OnPracticeTranscript(string transcript)
@@ -571,42 +696,28 @@ namespace Tigerverse.UI
             // Lightning particle burst from scribble to dummy.
             SpawnLightningEffect();
 
-            // Dummy reels then falls over.
-            if (_dummy != null)
-            {
-                Vector3 startPos = _dummy.transform.localPosition;
-                Quaternion startRot = _dummy.transform.localRotation;
-
-                // Hit flash — quick scale punch.
-                float t = 0f, dur = 0.15f;
-                while (t < dur)
-                {
-                    t += Time.deltaTime;
-                    float k = Mathf.Sin((t / dur) * Mathf.PI);
-                    _dummy.transform.localScale = Vector3.one * (1f + 0.18f * k);
-                    yield return null;
-                }
-                _dummy.transform.localScale = Vector3.one;
-
-                // Fall over (rotate around its base).
-                t = 0f; dur = 0.55f;
-                while (t < dur)
-                {
-                    t += Time.deltaTime;
-                    float k = Mathf.Clamp01(t / dur);
-                    float eased = k * k;
-                    _dummy.transform.localRotation = startRot * Quaternion.Euler(0f, 0f, 90f * eased);
-                    _dummy.transform.localPosition = startPos + new Vector3(0, -0.05f * eased, 0);
-                    yield return null;
-                }
-
-                // Fade out + destroy.
-                yield return new WaitForSeconds(0.35f);
-                FadeAndDestroy(_dummy, 0.4f);
-                _dummy = null;
-            }
+            // Dummy reels but STAYS STANDING. No fall-over, no respawn —
+            // the player will keep practicing on this same dummy through
+            // the guided tutorial and the freeform continuous practice.
+            yield return PunchScale(_dummy, 0.18f, 0.15f);
 
             yield return new WaitForSeconds(0.2f);
+        }
+
+        // Reusable scale-punch hit reaction. Dummy stays standing.
+        private IEnumerator PunchScale(GameObject target, float intensity, float duration)
+        {
+            if (target == null) yield break;
+            Vector3 startScale = target.transform.localScale;
+            float t = 0f;
+            while (t < duration && target != null)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Sin((t / duration) * Mathf.PI);
+                target.transform.localScale = startScale * (1f + intensity * k);
+                yield return null;
+            }
+            if (target != null) target.transform.localScale = startScale;
         }
 
         // ─── Continuous practice ────────────────────────────────────────
@@ -619,8 +730,9 @@ namespace Tigerverse.UI
         // via the moves' triggerPhrases.
         private IEnumerator RunContinuousPractice()
         {
-            // The scripted ThunderBolt demo destroys the dummy. Bring it
-            // back so there's something to practice on.
+            // Dummy should already be standing from the practice + guided
+            // sequence (the dummy never dies anymore). This is just a
+            // defensive guard in case it was somehow torn down.
             if (_dummy == null) SpawnDummy();
 
             // Build a small "starter kit" of MoveSOs and bind them to the
@@ -701,39 +813,32 @@ namespace Tigerverse.UI
         }
 
         // VoiceRouter has already done all the keyword matching against the
-        // bound moveset's triggerPhrases — we just react with a hit anim +
-        // colored particle burst. The dummy NEVER dies in practice mode.
+        // bound moveset's triggerPhrases — we just react with the move's
+        // custom animation. The dummy NEVER dies in practice mode.
         private void OnContinuousPracticeMoveCast(MoveSO move)
         {
             if (!_continuousPractice || _stopRequested) return;
             if (move == null || _dummy == null) return;
 
-            Color burstColor = BurstColorForElement(move.element);
             Debug.Log($"[ProfessorTutorial] Practice hit: '{move.displayName}' (element={move.element})");
-            StartCoroutine(PracticeMoveHit(move.displayName, burstColor));
+            StartCoroutine(PlayMoveAnimation(move.displayName));
         }
 
-        private IEnumerator PracticeMoveHit(string moveName, Color fxColor)
+        // Generic fallback when the cast move has no custom animation.
+        // Uses the element-color burst we already had.
+        private IEnumerator PerformGenericBurst(string moveKey)
         {
             if (_dummy == null) yield break;
-
-            // Particle burst from the borrowed scribble (or stage center if
-            // the scribble didn't load) toward the dummy, colored by move.
-            SpawnColoredBurst(fxColor);
-
-            // Hit-flash scale punch on the dummy. Same shape as the demo.
-            Vector3 startScale = _dummy != null ? _dummy.transform.localScale : Vector3.one;
-            float t = 0f, dur = 0.15f;
-            while (t < dur && _dummy != null)
+            // Best-effort element lookup so the burst color still matches.
+            Color color = Color.white;
+            var catalog = MoveCatalog.Instance;
+            if (catalog != null && !string.IsNullOrEmpty(moveKey))
             {
-                t += Time.deltaTime;
-                float k = Mathf.Sin((t / dur) * Mathf.PI);
-                _dummy.transform.localScale = startScale * (1f + 0.18f * k);
-                yield return null;
+                var m = catalog.Find(moveKey);
+                if (m != null) color = BurstColorForElement(m.element);
             }
-            if (_dummy != null) _dummy.transform.localScale = startScale;
-            // Dummy stays standing — no fall, no respawn. Just keep playing
-            // hit reactions until the tutorial leaves.
+            SpawnColoredBurst(color);
+            yield return PunchScale(_dummy, 0.18f, 0.15f);
         }
 
         // Lightning-style burst, but with a parameterized color so different
@@ -793,6 +898,435 @@ namespace Tigerverse.UI
 
             ps.Play();
             Destroy(go, 1.5f);
+        }
+
+        // ─── Per-move custom animations ─────────────────────────────────
+        // Central dispatcher used by both the guided tutorial AND freeform
+        // continuous practice. Each case fires a unique procedural anim;
+        // the default falls back to the colored burst.
+        private IEnumerator PlayMoveAnimation(string moveKey)
+        {
+            string k = (moveKey ?? "").ToLowerInvariant().Trim();
+            switch (k)
+            {
+                case "fireball":     yield return PerformFireball();    break;
+                case "water gun":
+                case "watergun":     yield return PerformWaterGun();    break;
+                case "ice shard":
+                case "iceshard":     yield return PerformIceShard();    break;
+                case "leaf blade":
+                case "leafblade":    yield return PerformLeafBlade();   break;
+                case "thunder bolt":
+                case "thunderbolt":  yield return PerformThunderBolt(); break;
+                default:             yield return PerformGenericBurst(k); break;
+            }
+        }
+
+        // Tiny wind-up jump on the borrowed scribble. Used as the lead-in
+        // for every per-move animation. Crouch + spring + back to rest.
+        private IEnumerator ScribbleWindup(float duration, float jumpHeight, float crouch)
+        {
+            if (_borrowedScribble == null) yield break;
+            Vector3 startPos = _borrowedScribble.transform.localPosition;
+            Vector3 startScale = _borrowedScribble.transform.localScale;
+            float t = 0f;
+            while (t < duration && _borrowedScribble != null)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / duration);
+                // First half: crouch (squash). Second half: jump (release).
+                float crouchK = k < 0.5f ? Mathf.Sin(k * Mathf.PI) : 0f;
+                float jumpK   = k >= 0.5f ? Mathf.Sin((k - 0.5f) * 2f * Mathf.PI) : 0f;
+                _borrowedScribble.transform.localPosition = startPos + new Vector3(0, jumpHeight * jumpK, 0);
+                _borrowedScribble.transform.localScale = new Vector3(
+                    startScale.x * (1f + 0.10f * crouchK),
+                    startScale.y * (1f - crouch * crouchK),
+                    startScale.z * (1f + 0.10f * crouchK));
+                yield return null;
+            }
+            if (_borrowedScribble != null)
+            {
+                _borrowedScribble.transform.localPosition = startPos;
+                _borrowedScribble.transform.localScale    = startScale;
+            }
+        }
+
+        // Returns the world-space "muzzle" point on the borrowed scribble
+        // and the world-space "hit" point on the dummy. Used by every anim.
+        private bool TryGetCastEndpoints(out Vector3 origin, out Vector3 target)
+        {
+            origin = Vector3.zero;
+            target = Vector3.zero;
+            if (_dummy == null) return false;
+            origin = _borrowedScribble != null
+                ? _borrowedScribble.transform.position + Vector3.up * 0.4f
+                : _stageCenter - _stageForward * 0.5f + Vector3.up * 0.5f;
+            target = _dummy.transform.position + Vector3.up * 0.4f;
+            return true;
+        }
+
+        // Builds an empty FX GameObject at `origin` aimed at `target`,
+        // with a fresh ParticleSystem + Unlit particle material in the
+        // requested color. The caller configures emission/shape/etc.
+        private (GameObject go, ParticleSystem ps, ParticleSystemRenderer psr, Material mat) BuildFx(
+            string name, Vector3 origin, Vector3 target, Color color)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, worldPositionStays: true);
+            go.transform.position = origin;
+            Vector3 dir = target - origin;
+            if (dir.sqrMagnitude > 1e-6f)
+                go.transform.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+
+            var ps  = go.AddComponent<ParticleSystem>();
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
+            var mat = new Material(sh);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            else mat.color = color;
+            psr.sharedMaterial = mat;
+            return (go, ps, psr, mat);
+        }
+
+        // FIREBALL — two-stage: glowing orb travels scribble->dummy, then
+        // explodes into a ring of orange/red sparks on impact. Sphere-shape
+        // burst (not stretched like lightning).
+        private IEnumerator PerformFireball()
+        {
+            if (!TryGetCastEndpoints(out var origin, out var target)) yield break;
+
+            yield return ScribbleWindup(0.30f, 0.05f, 0.18f);
+            if (!TryGetCastEndpoints(out origin, out target)) yield break;
+
+            Color hot   = new Color(1.0f, 0.55f, 0.15f);
+            Color core  = new Color(1.0f, 0.85f, 0.40f);
+
+            // Stage 1: orb (a small lit sphere) travels from origin to target.
+            var orb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            orb.name = "FireOrb";
+            var col = orb.GetComponent<Collider>(); if (col != null) Destroy(col);
+            orb.transform.SetParent(transform, worldPositionStays: true);
+            orb.transform.position = origin;
+            orb.transform.localScale = Vector3.one * 0.18f;
+            var orbSh = Shader.Find("Universal Render Pipeline/Lit");
+            var orbMat = new Material(orbSh);
+            if (orbMat.HasProperty("_BaseColor")) orbMat.SetColor("_BaseColor", core);
+            if (orbMat.HasProperty("_EmissionColor")) { orbMat.EnableKeyword("_EMISSION"); orbMat.SetColor("_EmissionColor", hot * 4f); }
+            orb.GetComponent<Renderer>().sharedMaterial = orbMat;
+
+            // Trailing embers behind the orb (sphere shape, billboard).
+            var trail = BuildFx("FireballTrail", origin, target, hot);
+            {
+                var main = trail.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.6f; main.loop = true;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.20f, 0.45f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.2f, 0.8f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(hot, core);
+                main.maxParticles  = 80;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                trail.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = trail.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 90f;
+                var shape = trail.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.08f;
+                trail.ps.Play();
+            }
+
+            float travelDur = 0.40f, t = 0f;
+            while (t < travelDur)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / travelDur);
+                Vector3 pos = Vector3.Lerp(origin, target, k);
+                orb.transform.position = pos;
+                if (trail.go != null) trail.go.transform.position = pos;
+                yield return null;
+            }
+
+            if (trail.go != null) Destroy(trail.go, 0.4f);
+            Destroy(orb);
+
+            // Stage 2: explosion ring at target — donut-ish radial burst.
+            var burst = BuildFx("FireballBurst", target, target + Vector3.up, hot);
+            {
+                var main = burst.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.30f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(2.5f, 5.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.08f, 0.18f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(hot, core);
+                main.maxParticles  = 140;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                burst.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = burst.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 100) });
+                var shape = burst.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.05f;
+                burst.ps.Play();
+                Destroy(burst.go, 1.2f);
+            }
+
+            // Hit reaction — dummy stays standing.
+            yield return PunchScale(_dummy, 0.20f, 0.18f);
+        }
+
+        // WATER GUN — wide cone-shaped continuous spray, longer particle
+        // lifetime so it reads as a hose rather than a flash.
+        private IEnumerator PerformWaterGun()
+        {
+            if (!TryGetCastEndpoints(out var origin, out var target)) yield break;
+
+            // Wind-up: scribble rears back (small backward sway).
+            if (_borrowedScribble != null)
+            {
+                Vector3 startPos = _borrowedScribble.transform.localPosition;
+                Vector3 backDir  = -_borrowedScribble.transform.forward * 0.06f;
+                float t0 = 0f, dur0 = 0.22f;
+                while (t0 < dur0 && _borrowedScribble != null)
+                {
+                    t0 += Time.deltaTime;
+                    float k = Mathf.Sin(Mathf.Clamp01(t0 / dur0) * Mathf.PI);
+                    _borrowedScribble.transform.localPosition = startPos + backDir * k;
+                    yield return null;
+                }
+                if (_borrowedScribble != null) _borrowedScribble.transform.localPosition = startPos;
+            }
+            if (!TryGetCastEndpoints(out origin, out target)) yield break;
+
+            Color cold = new Color(0.30f, 0.65f, 1.00f);
+            Color foam = new Color(0.85f, 0.95f, 1.00f);
+
+            // Continuous spray cone (wide, slower particles, long lifetime).
+            var spray = BuildFx("WaterSpray", origin, target, cold);
+            {
+                var main = spray.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.55f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.55f, 0.85f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(3.5f, 5.5f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.12f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(cold, foam);
+                main.maxParticles  = 220;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = 0.4f;
+                spray.psr.renderMode = ParticleSystemRenderMode.Stretch;
+                spray.psr.lengthScale = 2.5f;
+                spray.psr.velocityScale = 0.25f;
+                var emission = spray.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 220f;
+                var shape = spray.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle  = 18f;   // wide cone
+                shape.radius = 0.05f;
+                spray.ps.Play();
+                Destroy(spray.go, 1.6f);
+            }
+
+            // Wait for the spray to actually reach the dummy before the hit.
+            yield return new WaitForSeconds(0.35f);
+
+            // Splash burst: outward ring at the dummy.
+            var splash = BuildFx("WaterSplash", target, target + Vector3.up, foam);
+            {
+                var main = splash.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.30f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(2.5f, 4.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.12f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(foam, cold);
+                main.maxParticles  = 120;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = 0.6f;
+                splash.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = splash.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 90) });
+                var shape = splash.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Donut;
+                shape.radius = 0.18f;
+                shape.donutRadius = 0.04f;
+                splash.ps.Play();
+                Destroy(splash.go, 1.4f);
+            }
+
+            yield return PunchScale(_dummy, 0.16f, 0.16f);
+        }
+
+        // ICE SHARD — angular stretched-particle "shards" flying scribble
+        // -> dummy, then a short-life cubic shatter burst on impact.
+        private IEnumerator PerformIceShard()
+        {
+            if (!TryGetCastEndpoints(out var origin, out var target)) yield break;
+
+            // Wind-up: brief pale-cyan scale pulse on the scribble.
+            if (_borrowedScribble != null)
+            {
+                Vector3 startScale = _borrowedScribble.transform.localScale;
+                float t0 = 0f, dur0 = 0.22f;
+                while (t0 < dur0 && _borrowedScribble != null)
+                {
+                    t0 += Time.deltaTime;
+                    float k = Mathf.Sin(Mathf.Clamp01(t0 / dur0) * Mathf.PI);
+                    _borrowedScribble.transform.localScale = startScale * (1f + 0.06f * k);
+                    yield return null;
+                }
+                if (_borrowedScribble != null) _borrowedScribble.transform.localScale = startScale;
+            }
+            if (!TryGetCastEndpoints(out origin, out target)) yield break;
+
+            Color icePale = new Color(0.80f, 0.95f, 1.00f);
+            Color iceDeep = new Color(0.45f, 0.75f, 0.95f);
+
+            // Travel: a few angular stretched shards thrown in a tight cone.
+            var shards = BuildFx("IceShards", origin, target, icePale);
+            {
+                var main = shards.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.20f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(7.5f, 10f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.08f, 0.16f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(icePale, iceDeep);
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                main.maxParticles  = 30;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                shards.psr.renderMode  = ParticleSystemRenderMode.Stretch;
+                shards.psr.lengthScale = 5f;
+                shards.psr.velocityScale = 0.4f;
+                var emission = shards.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 12) });
+                var shape = shards.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle  = 4f;
+                shape.radius = 0.04f;
+                shards.ps.Play();
+                Destroy(shards.go, 1.0f);
+            }
+
+            yield return new WaitForSeconds(0.18f);
+
+            // Impact: jagged shatter — short-life cubic particles spraying
+            // outward in all directions.
+            var shatter = BuildFx("IceShatter", target, target + Vector3.up, icePale);
+            {
+                var main = shatter.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.20f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(3.5f, 6.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.10f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(icePale, iceDeep);
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                main.maxParticles  = 80;
+                main.gravityModifier = 0.8f;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                shatter.psr.renderMode  = ParticleSystemRenderMode.Stretch;
+                shatter.psr.lengthScale = 1.5f;
+                shatter.psr.velocityScale = 0.6f;
+                var emission = shatter.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+                var shape = shatter.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.02f;
+                shatter.ps.Play();
+                Destroy(shatter.go, 1.2f);
+            }
+
+            yield return PunchScale(_dummy, 0.18f, 0.16f);
+        }
+
+        // LEAF BLADE — fast green slash: one quick stretched-particle line
+        // sweeping scribble -> dummy, then a green sparkle puff at impact.
+        private IEnumerator PerformLeafBlade()
+        {
+            if (!TryGetCastEndpoints(out var origin, out var target)) yield break;
+
+            yield return ScribbleWindup(0.18f, 0.04f, 0.20f);
+            if (!TryGetCastEndpoints(out origin, out target)) yield break;
+
+            Color leafBright = new Color(0.55f, 0.95f, 0.40f);
+            Color leafDeep   = new Color(0.20f, 0.55f, 0.20f);
+
+            // Slash streak — single fast stretched line aimed at the dummy.
+            var slash = BuildFx("LeafSlash", origin, target, leafBright);
+            {
+                var main = slash.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.10f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.10f, 0.18f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(14f, 18f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.12f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(leafBright, leafDeep);
+                main.maxParticles  = 30;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                slash.psr.renderMode  = ParticleSystemRenderMode.Stretch;
+                slash.psr.lengthScale = 9f;     // long line
+                slash.psr.velocityScale = 0.6f;
+                var emission = slash.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 18) });
+                var shape = slash.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle  = 1.5f;   // razor-thin line, almost a beam
+                shape.radius = 0.02f;
+                slash.ps.Play();
+                Destroy(slash.go, 0.8f);
+            }
+
+            yield return new WaitForSeconds(0.12f);
+
+            // Impact: green sparkle puff (small omnidirectional billboard).
+            var puff = BuildFx("LeafPuff", target, target + Vector3.up, leafBright);
+            {
+                var main = puff.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.20f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(1.5f, 3.5f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.10f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(leafBright, leafDeep);
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                main.maxParticles  = 80;
+                main.gravityModifier = 0.2f;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                puff.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = puff.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 50) });
+                var shape = puff.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.05f;
+                puff.ps.Play();
+                Destroy(puff.go, 1.2f);
+            }
+
+            yield return PunchScale(_dummy, 0.16f, 0.14f);
         }
 
         private void SpawnLightningEffect()

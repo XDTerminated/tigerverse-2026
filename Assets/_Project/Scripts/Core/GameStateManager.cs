@@ -367,6 +367,8 @@ namespace Tigerverse.Core
 
             SetState(AppState.Battle);
 
+            Debug.Log($"[GameStateManager] Entering battle. statsA={(statsA!=null?statsA.displayName:"NULL")} statsA.moves.Length={(statsA?.moves?.Length ?? -1)} statsB={(statsB!=null?statsB.displayName:"NULL")} statsB.moves.Length={(statsB?.moves?.Length ?? -1)}");
+
             // Lock the trainer's locomotion + spawn the head-locked battle
             // HUD. Idempotent: re-runs cleanly on rematch.
             SetupBattleLocomotionAndHud();
@@ -387,6 +389,7 @@ namespace Tigerverse.Core
                 {
                     var statsForLocal = localCasterIndex == 0 ? statsA : statsB;
                     voiceRouter.Bind(battle, localCasterIndex, statsForLocal != null ? statsForLocal.moves : null);
+                    Debug.Log($"[GameStateManager] Battle voice bound. caster={localCasterIndex} statsForLocal={(statsForLocal!=null?statsForLocal.displayName:"NULL")} moves.Length={(statsForLocal?.moves?.Length ?? -1)} firstMove={(statsForLocal?.moves != null && statsForLocal.moves.Length>0 ? statsForLocal.moves[0]?.displayName : "<none>")}");
 
                     // Open-mic for combat — the player just shouts the move
                     // name, no grip required. ReadyHandshake / ProfessorTutorial

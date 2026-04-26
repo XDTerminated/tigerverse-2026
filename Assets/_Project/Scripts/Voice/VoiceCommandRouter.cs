@@ -256,6 +256,36 @@ namespace Tigerverse.Voice
 
         private void Update()
         {
+#if UNITY_EDITOR
+            // Editor-only test shortcut: press 1/2/3/4 to fire availableMoves[0..3]
+            // directly, skipping voice transcription. Useful for testing the
+            // wrist HUD + battle hookup without a working mic.
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null && availableMoves != null)
+            {
+                int idx = -1;
+                if (kb.digit1Key.wasPressedThisFrame) idx = 0;
+                else if (kb.digit2Key.wasPressedThisFrame) idx = 1;
+                else if (kb.digit3Key.wasPressedThisFrame) idx = 2;
+                else if (kb.digit4Key.wasPressedThisFrame) idx = 3;
+                if (idx >= 0 && idx < availableMoves.Length && availableMoves[idx] != null)
+                {
+                    var move = availableMoves[idx];
+                    Debug.Log($"[Voice/EditorTest] Forcing move {idx} '{move.displayName}'");
+                    if (_nextCastAt.TryGetValue(move, out float readyAt) && Time.time < readyAt)
+                    {
+                        Debug.Log($"[Voice/EditorTest] '{move.displayName}' on cooldown — skipping.");
+                    }
+                    else
+                    {
+                        if (battle != null) battle.SubmitMove(move, casterIndex);
+                        _nextCastAt[move] = Time.time + Mathf.Max(0f, move.cooldownSeconds);
+                        OnMoveCast?.Invoke(move);
+                    }
+                }
+            }
+#endif
+
             // ─── Open-mic / VAD path ─────────────────────────────────────
             if (openMicMode)
             {

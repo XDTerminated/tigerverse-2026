@@ -224,6 +224,7 @@ namespace Tigerverse.UI
 
         private void RefreshMoves(MoveSO[] moves)
         {
+            Debug.Log($"[BattleHUD] RefreshMoves invoked. moves={(moves?.Length.ToString() ?? "NULL")} first={(moves != null && moves.Length>0 ? moves[0]?.displayName : "<none>")}");
             _moves = moves;
 
             if (_movesPanel == null) return;

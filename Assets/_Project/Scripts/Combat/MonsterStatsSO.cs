@@ -28,9 +28,19 @@ namespace Tigerverse.Combat
                 so.speed = 1f;
                 so.element = ElementType.Neutral;
                 so.flavorText = string.Empty;
-                so.moves = catalog != null && catalog.Dodge != null
-                    ? new MoveSO[] { catalog.Dodge }
-                    : new MoveSO[0];
+
+                // Even with null data, fill the moveset to 4 so the wrist HUD
+                // has full pills and the player can attack. Same fill-to-4
+                // loop as the normal path below.
+                var nullPathMoves = new List<MoveSO>();
+                if (catalog != null && catalog.Dodge != null) nullPathMoves.Add(catalog.Dodge);
+                string[] nullFillers = { "Fireball", "Watergun", "Thunderbolt", "Iceshard", "Leafblade", "Rocksmash", "Shadowbite" };
+                for (int i = 0; i < nullFillers.Length && nullPathMoves.Count < 4; i++)
+                {
+                    var fb = catalog?.Find(nullFillers[i]);
+                    if (fb != null && !nullPathMoves.Contains(fb)) nullPathMoves.Add(fb);
+                }
+                so.moves = nullPathMoves.ToArray();
                 return so;
             }
 
@@ -71,18 +81,20 @@ namespace Tigerverse.Combat
             // move names (or none of them matched the catalog), `resolved`
             // ends up containing only Dodge. That leaves the player unable
             // to attack at all — shouting "fireball" matches nothing because
-            // Fireball isn't in availableMoves. Inject a sane offensive
-            // starter kit so the battle is still playable while we figure
-            // out the network/backend issue.
+            // Fireball isn't in availableMoves. Warn loudly so we can spot
+            // backend regressions in the log.
             if (catalog != null && resolved.Count <= 1)
             {
-                Debug.LogWarning($"[MonsterStatsSO] Only Dodge resolved for '{so.displayName}' (data.moves empty or unmatched). Injecting Fireball/Watergun/Thunderbolt fallbacks.");
-                string[] fallbacks = { "Fireball", "Watergun", "Thunderbolt" };
-                for (int i = 0; i < fallbacks.Length; i++)
-                {
-                    var fb = catalog.Find(fallbacks[i]);
-                    if (fb != null && !resolved.Contains(fb)) resolved.Add(fb);
-                }
+                Debug.LogWarning($"[MonsterStatsSO] Only Dodge resolved for '{so.displayName}' (data.moves empty or unmatched). Filling to 4 with Fireball/Watergun/Thunderbolt fallbacks.");
+            }
+
+            // Always guarantee 4 total moves so the wrist HUD has full pills and the
+            // player can attack even if the backend's moveset is short or unmatched.
+            string[] fillers = { "Fireball", "Watergun", "Thunderbolt", "Iceshard", "Leafblade", "Rocksmash", "Shadowbite" };
+            for (int i = 0; i < fillers.Length && resolved.Count < 4; i++)
+            {
+                var fb = catalog?.Find(fillers[i]);
+                if (fb != null && !resolved.Contains(fb)) resolved.Add(fb);
             }
 
             if (resolved.Count < 1)
