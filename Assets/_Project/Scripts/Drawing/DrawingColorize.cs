@@ -44,14 +44,18 @@ namespace Tigerverse.Drawing
                 Debug.LogWarning("[DrawingColorize] No Paper003_Color texture in Resources/PaperTextures. Run 'Tigerverse → Textures → Download Paper003' to fetch it; shader will fall back to flat tint until then.");
             }
 
-            // Compute the model's object-space bounding box once so the drawing's
-            // front-axis projection in the stylized shader is sized to fit the mesh.
-            Bounds objBounds = ComputeObjectBounds(root);
-            Vector4 bboxMin = new Vector4(objBounds.min.x, objBounds.min.y, objBounds.min.z, 0);
+            // Compute the model's WORLD-space bounding box. The shader
+            // projects the drawing using positionWS, so we need world
+            // bounds to align it correctly. Object-space bounds were
+            // unreliable on nested glTFast hierarchies — every leaf mesh
+            // had its own local origin and the drawing landed on a tiny
+            // corner of the model.
+            Bounds wsBounds = ComputeWorldBounds(root);
+            Vector4 bboxMin = new Vector4(wsBounds.min.x, wsBounds.min.y, wsBounds.min.z, 0);
             Vector4 bboxSize = new Vector4(
-                Mathf.Max(objBounds.size.x, 0.001f),
-                Mathf.Max(objBounds.size.y, 0.001f),
-                Mathf.Max(objBounds.size.z, 0.001f),
+                Mathf.Max(wsBounds.size.x, 0.001f),
+                Mathf.Max(wsBounds.size.y, 0.001f),
+                Mathf.Max(wsBounds.size.z, 0.001f),
                 0);
 
             // drawingStrength here doubles as the "drawing watermark hint" on the
@@ -63,7 +67,7 @@ namespace Tigerverse.Drawing
             string usedShader = useLegacyTriplanar ? "DrawingTriplanar(legacy)"
                               : (stylized != null ? "DrawingStylized" : "URP/Lit fallback");
             Debug.Log($"[DrawingColorize] '{root.name}' tint=#{ColorUtility.ToHtmlStringRGB(tint)} " +
-                      $"renderers={renderers.Length} shader={usedShader} bbox={objBounds.size}");
+                      $"renderers={renderers.Length} shader={usedShader} bbox={wsBounds.size}");
             foreach (var rend in renderers)
             {
                 Material mat;
@@ -84,6 +88,10 @@ namespace Tigerverse.Drawing
                     mat.SetVector("_BBoxSize", bboxSize);
                     // Higher default hint so the doodle is the primary identifier of each monster.
                     mat.SetFloat("_DrawingHint", Mathf.Clamp(drawingStrength <= 0.0001f ? 0.55f : drawingStrength, 0.05f, 0.95f));
+                    // Force pencil-hatch off across every monster body — the
+                    // user wants a clean texture without the cross-hatch
+                    // overlay regardless of the shader's default value.
+                    mat.SetFloat("_PencilStrength", 0f);
                     if (paperColor != null) mat.SetTexture("_PaperTex", paperColor);
                     if (paperNormal != null) mat.SetTexture("_PaperNormalTex", paperNormal);
                 }
@@ -92,6 +100,13 @@ namespace Tigerverse.Drawing
                     mat = new Material(litShader != null ? litShader : Shader.Find("Standard"));
                     mat.SetColor("_BaseColor", tint);
                     if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+                    // Match the matte look of DrawingStylized on the URP/Lit
+                    // fallback path so the model never gains a shiny ball
+                    // highlight when our custom shader is missing.
+                    if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0f);
+                    if (mat.HasProperty("_Metallic"))   mat.SetFloat("_Metallic",   0f);
+                    if (mat.HasProperty("_SpecularHighlights"))     mat.SetFloat("_SpecularHighlights",     0f);
+                    if (mat.HasProperty("_EnvironmentReflections")) mat.SetFloat("_EnvironmentReflections", 0f);
                 }
 
                 int slotCount = rend.sharedMaterials != null ? rend.sharedMaterials.Length : 1;
@@ -106,6 +121,20 @@ namespace Tigerverse.Drawing
                     rend.materials = arr;
                 }
             }
+        }
+
+        // Union of all renderer world-space AABBs under root.
+        private static Bounds ComputeWorldBounds(GameObject root)
+        {
+            var rends = root.GetComponentsInChildren<Renderer>(true);
+            Bounds b = new Bounds(root.transform.position, Vector3.one);
+            bool any = false;
+            foreach (var r in rends)
+            {
+                if (r == null) continue;
+                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+            }
+            return b;
         }
 
         // Compute the union of all child mesh bounds in the root's local space.

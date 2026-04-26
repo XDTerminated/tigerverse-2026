@@ -27,6 +27,9 @@ namespace Tigerverse.Voice
         [SerializeField] private string preferredMicSubstring = "";
 
         private MoveSO[]   availableMoves;
+
+        /// <summary>The local player's currently-bound moveset, or null if no battle is active. Read-only view for HUDs.</summary>
+        public MoveSO[] AvailableMoves => availableMoves;
         private bool       isRecording;
         private bool       triggerWasPressed;
         private bool       spaceWasPressed;
@@ -169,32 +172,43 @@ namespace Tigerverse.Voice
         {
             if (_muted == muted) return;
             _muted = muted;
-            if (_muted)
+            // IMPORTANT: do NOT call Microphone.End / Microphone.Start here.
+            // On Quest, restarting the mic device causes a ~150 ms main-thread
+            // hitch — and we used to do that at the START AND END of every
+            // single Professor TTS line, which the player perceived as the
+            // game freezing on every new line. The mic stream is left
+            // running; the muted flag below tells VadTick to drop samples
+            // (so the speaker echo can't be transcribed as a fake question).
+            if (muted && _vadInSpeech)
             {
-                // Discard whatever's currently being recorded so the echo
-                // from the speaker doesn't get sent to STT.
-                if (_vadStarted) StopVad();
-                if (isRecording)
-                {
-                    try { Microphone.End(micDeviceName); } catch { }
-                    isRecording = false;
-                    currentClip = null;
-                }
+                // If we were mid-utterance when the mute flipped, abort it
+                // so the trailing TTS audio can't be spliced into a
+                // transcription. Just reset the state machine — the mic
+                // keeps streaming into the same circular clip.
+                _vadInSpeech = false;
             }
-            Debug.Log($"[VoiceCommandRouter] muted = {muted}");
+            Debug.Log($"[VoiceCommandRouter] muted = {muted} (mic kept alive)");
         }
 
         private void Update()
         {
             // ─── Open-mic / VAD path ─────────────────────────────────────
-            if (openMicMode && !_muted)
+            if (openMicMode)
             {
+                if (_muted)
+                {
+                    // Mic stays running (avoids the per-line Quest hitch),
+                    // we just skip the analysis tick so nothing gets
+                    // transcribed during TTS playback.
+                    return;
+                }
                 VadTick();
                 return;
             }
             else if (_vadStarted)
             {
-                // Mode just flipped off — stop the continuous recording.
+                // Open-mic mode itself just flipped off (not just a mute) —
+                // OK to stop the continuous recording.
                 StopVad();
             }
 
@@ -491,6 +505,15 @@ namespace Tigerverse.Voice
 
             if (bestMove != null && (bestSubstring || bestScore < matchThreshold))
             {
+                // Battle control mode gate: only the trainer issues moves.
+                // While the player is in Scribble mode (steering their
+                // monster around), voice commands are intentionally ignored.
+                var modeMgr = Tigerverse.Combat.BattleControlModeManager.Instance;
+                if (modeMgr != null && !modeMgr.CanAttack)
+                {
+                    Debug.Log($"[VoiceCommandRouter] Move '{bestMove.displayName}' ignored — switch to Trainer mode (press A) to attack.");
+                    return;
+                }
                 if (battle != null) battle.SubmitMove(bestMove, casterIndex);
                 OnMoveCast?.Invoke(bestMove);
             }

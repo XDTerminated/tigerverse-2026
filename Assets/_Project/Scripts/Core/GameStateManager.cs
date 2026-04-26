@@ -357,6 +357,10 @@ namespace Tigerverse.Core
 
             SetState(AppState.Battle);
 
+            // Stand up the trainer/scribble control toggle for the battle.
+            // Idempotent: tears down any prior manager (e.g. from a rematch).
+            SetupBattleControlMode();
+
             if (battle != null)
             {
                 battle.Initialize(statsA, statsB);
@@ -439,6 +443,62 @@ namespace Tigerverse.Core
                                  monsterB, string.IsNullOrEmpty(nameB) ? "Player 2" : nameB,
                                  () => done = true);
             // vs.Play already waits for cutscene completion + destroys self.
+        }
+
+        // ─── Battle control mode (Trainer / Scribble) ──────────────────────
+        // The local player toggles with A. In Trainer mode they shout move
+        // names; in Scribble mode they steer the local scribble with the
+        // left stick to dodge. The trainer's body locomotion is locked in
+        // BOTH modes — the toggle only changes who the joystick drives and
+        // whether voice attacks fire.
+        private void SetupBattleControlMode()
+        {
+            // Tear down any prior instance (rematch / re-entry into Battle).
+            var prior = BattleControlModeManager.Instance;
+            if (prior != null) Destroy(prior.gameObject);
+            var priorOverlay = GameObject.Find("BattleModeOverlay");
+            if (priorOverlay != null) Destroy(priorOverlay);
+
+            // Local scribble = the monster GO that belongs to this client.
+            GameObject localScribble = localCasterIndex == 0 ? monsterAGo : monsterBGo;
+            if (localScribble == null)
+            {
+                Debug.LogWarning("[GameStateManager] No local scribble GO — battle control mode setup skipped.");
+                return;
+            }
+
+            // Resolve XR rig + locomotion components.
+            var origin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
+            UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider xrMove = null;
+            FlatMoveController editorMove = null;
+            if (origin != null)
+            {
+                xrMove = origin.gameObject.GetComponentInChildren<UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider>(true);
+                editorMove = origin.GetComponent<FlatMoveController>();
+            }
+
+            // Add the joystick→scribble driver. Disabled here; manager flips
+            // it on when the player switches to Scribble mode. Hand it the
+            // XR rig so it can snap the camera into the scribble's POV.
+            var scribbleMover = localScribble.GetComponent<ScribbleMoveController>();
+            if (scribbleMover == null) scribbleMover = localScribble.AddComponent<ScribbleMoveController>();
+            scribbleMover.target = localScribble.transform;
+            scribbleMover.xrOrigin = origin != null ? origin.transform : null;
+            scribbleMover.enabled = false;
+
+            // Head-locked banner that flashes the new mode name on toggle.
+            var overlayGo = new GameObject("BattleModeOverlay", typeof(RectTransform));
+            var overlay = overlayGo.AddComponent<BattleModeOverlay>();
+
+            // Manager itself.
+            var mgrGo = new GameObject("BattleControlModeManager");
+            var mgr = mgrGo.AddComponent<BattleControlModeManager>();
+            mgr.Configure(xrMove, editorMove, scribbleMover, overlay);
+
+            // Battle HUD: 4 moves on the right + event log on the left.
+            var hudGo = new GameObject("BattleHUD", typeof(RectTransform));
+            var hud = hudGo.AddComponent<BattleHUD>();
+            hud.Configure(mgr, voiceRouter);
         }
 
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)

@@ -23,7 +23,7 @@ Shader "Tigerverse/DrawingStylized"
         _OutlineThickness("Ink Outline Thickness",         Range(0,0.05)) = 0.015
 
         _PencilColor     ("Pencil Color",                  Color) = (0.05,0.05,0.08,1)
-        _PencilStrength  ("Pencil Hatch Strength",         Range(0,1)) = 0.85
+        _PencilStrength  ("Pencil Hatch Strength",         Range(0,1)) = 0
         _PencilScale     ("Pencil Hatch Scale",            Range(20,400)) = 140
         _PencilContrast  ("Pencil Contrast",               Range(0.5,4)) = 1.2
 
@@ -217,9 +217,18 @@ Shader "Tigerverse/DrawingStylized"
                 // 2) Paper-fiber normals.
                 float3 nPaper = TriplanarNormalWS(IN.positionWS, nWS, _PaperTexScale, 4.0, _PaperNormalStrength);
 
-                // 3) Drawing watermark from the front axis only — bumped strength
-                //    since the body has no color of its own to communicate the doodle.
-                float2 uv = saturate((IN.positionOS.xy - _BBoxMin.xy) / max(_BBoxSize.xy, 1e-4));
+                // 3) Drawing watermark from the front axis. We project in
+                //    WORLD space using the model's world-space AABB (passed
+                //    in by DrawingColorize at hatch time). Object-space
+                //    projection broke whenever the GLB had nested
+                //    transforms, because IN.positionOS is the LEAF mesh's
+                //    local space, not the model root's space — Meshy
+                //    output is always nested, so the drawing was previously
+                //    landing on a tiny corner of the body.
+                float2 uv = saturate((IN.positionWS.xy - _BBoxMin.xy) / max(_BBoxSize.xy, 1e-4));
+                // Flip V so the drawing isn't upside down (textures load
+                // with origin at top-left, world Y grows upward).
+                uv.y = 1.0 - uv.y;
                 half3  drawingSample = SAMPLE_TEXTURE2D(_DrawingTex, sampler_DrawingTex, uv).rgb;
                 float  faceWeight = pow(saturate(abs(dot(nWS, float3(0,0,1)))), 1.5);
                 baseCol = lerp(baseCol, baseCol * drawingSample, _DrawingHint * faceWeight);
@@ -251,8 +260,14 @@ Shader "Tigerverse/DrawingStylized"
 
                 SurfaceData surf = (SurfaceData)0;
                 surf.albedo     = albedo;
-                surf.smoothness = _Smoothness;
-                surf.metallic   = _Metallic;
+                // Force pure-matte: any smoothness > 0 combined with the
+                // paper normal map produced a tiny dot-pattern of specular
+                // glints across the model that swam as the player moved.
+                // Paper-craft monsters should never glint, so kill specular
+                // and reflections entirely.
+                surf.smoothness = 0;
+                surf.metallic   = 0;
+                surf.specular   = half3(0,0,0);
                 surf.alpha      = 1;
                 surf.occlusion  = 1;
 

@@ -103,6 +103,12 @@ namespace Tigerverse.Meshy
                 var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
                 Color tint = ParseElementColor(data.stats != null ? data.stats.element : "neutral");
                 mat.color = tint;
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+                // Kill the shiny-white-ball look on the mock placeholder.
+                if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0f);
+                if (mat.HasProperty("_Metallic"))   mat.SetFloat("_Metallic",   0f);
+                if (mat.HasProperty("_SpecularHighlights"))   mat.SetFloat("_SpecularHighlights",   0f);
+                if (mat.HasProperty("_EnvironmentReflections")) mat.SetFloat("_EnvironmentReflections", 0f);
                 placeholder.GetComponent<Renderer>().sharedMaterial = mat;
 
                 // Add MonsterCry stub so BattleManager.cryA/cryB references resolve cleanly.
