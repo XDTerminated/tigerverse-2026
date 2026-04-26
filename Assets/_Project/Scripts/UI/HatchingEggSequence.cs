@@ -82,12 +82,17 @@ namespace Tigerverse.UI
         private float _pokePulseDeg;
         private float _pokePulseDecay = 4.0f;
 
-        // Floating UI (name tag + progress bar)
+        // Floating UI (name tag + progress bar). Mirrors the HPBar style:
+        // worldspace UGUI canvas, white panel-rounded-sm bg, yellow rounded
+        // fill that grows left-to-right via sizeDelta width animation, and a
+        // centered TMP label showing time-to-hatch.
         private GameObject  _uiRoot;
         private TextMeshPro _nameLabel;
-        private GameObject  _progressBg;
-        private GameObject  _progressFill;
+        private UnityEngine.UI.Image _progressBgImg;
+        private UnityEngine.UI.Image _progressFillImg;
+        private TMPro.TextMeshProUGUI _timeLabel;
         private float       _displayProgress;
+        private float       _secondsLeft = -1f; // -1 = unknown, hide time
 
         private static readonly int CrackProp        = Shader.PropertyToID("_CrackAmount");
         private static readonly int DrawingTexProp   = Shader.PropertyToID("_DrawingTex");
@@ -177,59 +182,94 @@ namespace Tigerverse.UI
         }
 
         // ─── Floating UI (name + progress bar) ──────────────────────────
+        // Built as a worldspace UGUI canvas to match the HP bar visual:
+        // outer white panel with black border + rounded yellow fill + a
+        // centered TMP label showing the hatch time-left.
         private void BuildFloatingUI()
         {
             if (_uiRoot != null) return;
 
-            _uiRoot = new GameObject("EggUI");
+            _uiRoot = new GameObject("EggUI", typeof(RectTransform));
             _uiRoot.transform.SetParent(transform, worldPositionStays: false);
             _uiRoot.transform.localPosition = new Vector3(0f, eggHalfHeightTop + 0.16f, 0f);
             _uiRoot.transform.localRotation = Quaternion.identity;
+            // Worldspace canvas hosting the panel + fill + label.
+            var canvas = _uiRoot.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            _uiRoot.AddComponent<UnityEngine.UI.CanvasScaler>();
+            var rootRT = (RectTransform)_uiRoot.transform;
+            rootRT.sizeDelta = new Vector2(400f, 110f);
+            // ~0.001 m/canvas unit puts the bar at ~40cm wide, matching the
+            // old Quad's 0.34 width.
+            _uiRoot.transform.localScale = Vector3.one * 0.001f;
 
-            // Name label.
-            var labelGo = new GameObject("NameLabel");
-            labelGo.transform.SetParent(_uiRoot.transform, false);
-            labelGo.transform.localPosition = new Vector3(0f, 0.07f, 0f);
-            _nameLabel = labelGo.AddComponent<TextMeshPro>();
+            // Name label sits ABOVE the bar.
+            var nameGo = new GameObject("NameLabel");
+            nameGo.transform.SetParent(_uiRoot.transform, false);
+            // World-space TMP positioned above the canvas's main row. The
+            // canvas is 110 tall centered at y=0, so 80 pushes the label
+            // above the bar.
+            nameGo.transform.localPosition = new Vector3(0f, 80f, 0f);
+            _nameLabel = nameGo.AddComponent<TextMeshPro>();
             _nameLabel.text = "";
-            _nameLabel.fontSize = 0.45f;
+            _nameLabel.fontSize = 30f;
             _nameLabel.alignment = TextAlignmentOptions.Center;
-            _nameLabel.color = new Color(0.07f, 0.06f, 0.10f, 1f);
+            _nameLabel.color = Color.black;
             _nameLabel.enableWordWrapping = false;
-            // Make sure the label has a sane size for raymarching/rendering.
-            var rt = _nameLabel.rectTransform;
-            rt.sizeDelta = new Vector2(0.8f, 0.18f);
-            // Slight outline for legibility against any background.
-            _nameLabel.outlineColor = new Color32(255, 255, 255, 220);
-            _nameLabel.outlineWidth = 0.18f;
+            _nameLabel.rectTransform.sizeDelta = new Vector2(800f, 80f);
 
-            Shader unlit = Shader.Find("Universal Render Pipeline/Unlit");
-            if (unlit == null) unlit = Shader.Find("Unlit/Color");
+            // Bg panel (white, black-bordered rounded rect).
+            var bgGo = new GameObject("ProgressBg", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            bgGo.transform.SetParent(_uiRoot.transform, false);
+            var bgRT = (RectTransform)bgGo.transform;
+            bgRT.anchorMin = new Vector2(0.5f, 0.5f);
+            bgRT.anchorMax = new Vector2(0.5f, 0.5f);
+            bgRT.pivot = new Vector2(0.5f, 0.5f);
+            bgRT.sizeDelta = new Vector2(400f, 56f);
+            bgRT.anchoredPosition = Vector2.zero;
+            _progressBgImg = bgGo.GetComponent<UnityEngine.UI.Image>();
+            _progressBgImg.color = Color.white;
+            _progressBgImg.raycastTarget = false;
+#if UNITY_EDITOR
+            var panel = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Generated/panel-rounded-sm.png");
+            if (panel != null) { _progressBgImg.sprite = panel; _progressBgImg.type = UnityEngine.UI.Image.Type.Sliced; }
+#endif
 
-            // Progress bar background, dark inset.
-            _progressBg = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            _progressBg.name = "ProgressBg";
-            DestroyIfExists(_progressBg.GetComponent<Collider>());
-            _progressBg.transform.SetParent(_uiRoot.transform, false);
-            _progressBg.transform.localPosition = Vector3.zero;
-            _progressBg.transform.localScale = new Vector3(0.34f, 0.046f, 1f);
-            var bgMat = new Material(unlit);
-            if (bgMat.HasProperty("_BaseColor")) bgMat.SetColor("_BaseColor", new Color(0.12f, 0.10f, 0.08f, 1f));
-            else bgMat.color = new Color(0.12f, 0.10f, 0.08f, 1f);
-            _progressBg.GetComponent<Renderer>().sharedMaterial = bgMat;
+            // Yellow fill, rounded, padded inside the panel border.
+            const float pad = 8f;
+            var fillGo = new GameObject("ProgressFill", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            fillGo.transform.SetParent(bgGo.transform, false);
+            var fillRT = (RectTransform)fillGo.transform;
+            fillRT.anchorMin = new Vector2(0f, 0.5f);
+            fillRT.anchorMax = new Vector2(0f, 0.5f);
+            fillRT.pivot = new Vector2(0f, 0.5f);
+            fillRT.sizeDelta = new Vector2(400f - pad * 2f, 56f - pad * 2f);
+            fillRT.anchoredPosition = new Vector2(pad, 0f);
+            _progressFillImg = fillGo.GetComponent<UnityEngine.UI.Image>();
+            // Tailwind yellow-400, the user asked for yellow instead of green.
+            _progressFillImg.color = new Color(0xFA / 255f, 0xCC / 255f, 0x15 / 255f, 1f);
+            _progressFillImg.raycastTarget = false;
+#if UNITY_EDITOR
+            var fillSprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Generated/fill-rounded-sm.png");
+            if (fillSprite != null) { _progressFillImg.sprite = fillSprite; _progressFillImg.type = UnityEngine.UI.Image.Type.Sliced; }
+#endif
 
-            // Progress fill, bright warm bar that grows from left to right.
-            _progressFill = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            _progressFill.name = "ProgressFill";
-            DestroyIfExists(_progressFill.GetComponent<Collider>());
-            _progressFill.transform.SetParent(_progressBg.transform, false);
-            // Place very slightly in front of the bg so it z-fights cleanly toward the camera.
-            _progressFill.transform.localPosition = new Vector3(-0.5f, 0f, -0.001f);
-            _progressFill.transform.localScale    = new Vector3(0f, 0.86f, 1f);
-            var fillMat = new Material(unlit);
-            if (fillMat.HasProperty("_BaseColor")) fillMat.SetColor("_BaseColor", new Color(1f, 0.78f, 0.28f, 1f));
-            else fillMat.color = new Color(1f, 0.78f, 0.28f, 1f);
-            _progressFill.GetComponent<Renderer>().sharedMaterial = fillMat;
+            // Time-left label centered on top of the bar (rendered AFTER the
+            // fill so it's not occluded).
+            var timeGo = new GameObject("TimeLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
+            timeGo.transform.SetParent(bgGo.transform, false);
+            var timeRT = (RectTransform)timeGo.transform;
+            timeRT.anchorMin = Vector2.zero; timeRT.anchorMax = Vector2.one;
+            timeRT.offsetMin = Vector2.zero; timeRT.offsetMax = Vector2.zero;
+            _timeLabel = timeGo.GetComponent<TextMeshProUGUI>();
+            _timeLabel.text = "Hatching...";
+            _timeLabel.fontSize = 30f;
+            _timeLabel.alignment = TextAlignmentOptions.Center;
+            _timeLabel.color = Color.black;
+            _timeLabel.raycastTarget = false;
+
+            // Initialize fill to current progress.
+            ApplyFillWidth();
         }
 
         private static void DestroyIfExists(Component c)
@@ -247,16 +287,47 @@ namespace Tigerverse.UI
         public void SetDisplayProgress(float t)
         {
             _displayProgress = Mathf.Clamp01(t);
-            if (_progressFill == null) BuildFloatingUI();
-            if (_progressFill != null)
+            if (_progressFillImg == null) BuildFloatingUI();
+            ApplyFillWidth();
+        }
+
+        /// <summary>
+        /// Optional: pass an estimated remaining time in seconds. The bar
+        /// will display "M:SS left" instead of "Hatching...". Pass a
+        /// negative value to clear the time and show the generic label.
+        /// </summary>
+        public void SetSecondsLeft(float seconds)
+        {
+            _secondsLeft = seconds;
+            if (_timeLabel == null) BuildFloatingUI();
+            if (_timeLabel == null) return;
+            if (seconds < 0f)
             {
-                // Quad mesh is 1×1 centred at origin → x goes -0.5..0.5 in
-                // its parent's local space. Anchor fill to the LEFT edge of
-                // the bg by setting position based on width.
-                float w = _displayProgress;
-                _progressFill.transform.localScale    = new Vector3(w, 0.86f, 1f);
-                _progressFill.transform.localPosition = new Vector3(-0.5f + w * 0.5f, 0f, _progressFill.transform.localPosition.z);
+                _timeLabel.text = "Hatching...";
             }
+            else if (seconds < 1f)
+            {
+                _timeLabel.text = "Almost there!";
+            }
+            else
+            {
+                int total = Mathf.CeilToInt(seconds);
+                int m = total / 60;
+                int s = total % 60;
+                _timeLabel.text = m > 0 ? $"{m}:{s:D2} left" : $"{s}s left";
+            }
+        }
+
+        private void ApplyFillWidth()
+        {
+            if (_progressFillImg == null || _progressBgImg == null) return;
+            const float pad = 8f;
+            var bgRT = (RectTransform)_progressBgImg.transform;
+            float innerW = Mathf.Max(0f, bgRT.rect.width - pad * 2f);
+            var fillRT = (RectTransform)_progressFillImg.transform;
+            var sd = fillRT.sizeDelta;
+            sd.x = innerW * _displayProgress;
+            fillRT.sizeDelta = sd;
         }
 
         public void HideFloatingUI()
