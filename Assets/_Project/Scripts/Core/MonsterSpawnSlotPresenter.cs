@@ -53,6 +53,13 @@ namespace Tigerverse.Core
 
         private void Update()
         {
+            // Each player only sees their own egg. If this presenter's slot
+            // doesn't belong to the local caster, do nothing — no egg, no
+            // tutorial button, no progress visuals. The opponent's draw +
+            // hatch progress is invisible until the actual monster spawns
+            // in SpawnFlow.
+            if (!IsLocalCaster()) return;
+
             // Re-find the SessionApiClient if it wasn't ready at Awake
             // (Bootstrap initialization order isn't guaranteed across
             // host vs joiner). Without this retry, the joiner's
