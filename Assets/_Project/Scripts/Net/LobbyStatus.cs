@@ -73,11 +73,13 @@ namespace Tigerverse.Net
             if (ready && !_shrunk)
             {
                 _shrunk = true;
-                if (shrinkTarget != null)
-                {
-                    shrinkTarget.sizeDelta = shrinkSize;
-                    shrinkTarget.anchoredPosition = shrinkAnchoredPos;
-                }
+                // Once both players are in, kill the entire join menu — the
+                // status label, the canvas itself, anything still on the
+                // TitleCanvas — so nothing floats in the player's view
+                // while combat / hatching begins.
+                var canvas = GetComponent<Canvas>();
+                if (canvas != null) canvas.gameObject.SetActive(false);
+                else gameObject.SetActive(false);
             }
         }
     }
