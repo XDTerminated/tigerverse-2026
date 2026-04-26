@@ -130,6 +130,13 @@ namespace Tigerverse.EditorTools
             TryAddComponentByName(camGo, "UnityEngine.XR.ARFoundation.ARCameraManager");
             TryAddComponentByName(camGo, "UnityEngine.XR.ARFoundation.ARCameraBackground");
 
+            // Head-tracking on the AR camera. Without this the camera is
+            // pinned to (0,0,0) and renders the scene from the wrong POV
+            // even though passthrough composites around the real headset.
+            // The result was "no monsters visible" because they were
+            // behind / below / outside the static camera frustum.
+            camGo.AddComponent<Tigerverse.MR.MRHeadPoseDriver>();
+
             // Wire up XROrigin's required references — camera + camera
             // offset object + Floor tracking origin. Without these the AR
             // subsystem can't find the camera to drive passthrough into,

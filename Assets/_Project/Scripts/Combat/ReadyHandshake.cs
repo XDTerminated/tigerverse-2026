@@ -267,38 +267,109 @@ namespace Tigerverse.Combat
         {
             if (_fired) return;
             _fired = true;
-            Debug.Log($"[ReadyHandshake] Local player READY via {sourceLabel}.");
+            Debug.Log($"[ReadyHandshake] Local player READY via {sourceLabel} — posting to SessionManager and waiting for opponent.");
 
-            // The fist bump itself is the colocation event — both players'
-            // controllers are at the same physical point at the moment it
-            // confirmed. Use that point (snapped to the floor) as the
-            // shared MR battle arena anchor and switch the headset into
-            // passthrough so combat plays out in the real room.
-            //
-            // Gated on the Meta-OpenXR package being present. Without it
-            // there is no passthrough source, so reparenting the spawn
-            // pivots would teleport the monsters to a random spot in the
-            // existing VR lobby — combat just stays where it is instead.
+            // Tear down the local UI / mic immediately — we're done.
+            if (_voice != null)
+            {
+                _voice.OnTranscript.RemoveListener(HandleVoice);
+                _voice.SetOpenMicMode(false);
+            }
+            if (_button != null && _button.gameObject != null) Destroy(_button.gameObject);
+
+            // Hand off to the synced gate. OnLocalReady + the MR transition
+            // only fire once BOTH peers have posted ready, and we use the
+            // first valid bump midpoint as the shared MR arena anchor so
+            // both players see the monsters in the same physical spot.
+            StartCoroutine(WaitForBothReadyThenAdvance());
+        }
+
+        private IEnumerator WaitForBothReadyThenAdvance()
+        {
+#if FUSION2
+            int casterIdx = ResolveLocalCasterIndex();
+            var sm = Tigerverse.Net.SessionManager.Instance;
+
+            // Solo / test path: no SessionManager (debug trigger or not in
+            // a Photon room) OR only one peer is connected → skip the
+            // sync gate entirely and advance immediately. Otherwise the
+            // single tester would sit through a 60-second timeout staring
+            // at nothing before MR finally fires.
+            bool hasOpponent = sm != null && HasMultiplePlayersInRunner();
+
+            if (!hasOpponent)
+            {
+                Debug.Log("[ReadyHandshake] No opponent detected (solo / debug test) — skipping both-ready gate.");
+            }
+            else
+            {
+                sm.RPC_PostReady(casterIdx, _bumpMidpointValid, _bumpMidpointWorld);
+
+                // Wait until BOTH peers have flipped their ready flag.
+                // Hard cap at 60 s so we don't deadlock on a crash.
+                float deadline = Time.time + 60f;
+                while (Time.time < deadline)
+                {
+                    sm = Tigerverse.Net.SessionManager.Instance;
+                    if (sm != null && sm.ReadyP1 && sm.ReadyP2) break;
+                    yield return null;
+                }
+                if (sm == null || !sm.ReadyP1 || !sm.ReadyP2)
+                    Debug.LogWarning("[ReadyHandshake] Timed out waiting for opponent ready — advancing solo.");
+                else
+                    Debug.Log("[ReadyHandshake] Both players READY — advancing into MR + battle.");
+            }
+#else
+            yield return null;
+#endif
+
 #if UNITY_XR_META_OPENXR
             EnterMRWithBumpAnchor();
 #endif
 
             try { OnLocalReady?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+        }
 
-            if (_voice != null)
+#if FUSION2
+        private static bool HasMultiplePlayersInRunner()
+        {
+            // Find any active NetworkRunner — if it's running and has
+            // more than one player, we have a real opponent to wait for.
+            var runners = FindObjectsByType<Fusion.NetworkRunner>(FindObjectsSortMode.None);
+            foreach (var r in runners)
             {
-                _voice.OnTranscript.RemoveListener(HandleVoice);
-                _voice.SetOpenMicMode(false); // restore push-to-talk for combat
+                if (r == null || !r.IsRunning) continue;
+                int count = 0;
+                foreach (var p in r.ActivePlayers) { count++; if (count >= 2) return true; }
             }
-            if (_button != null && _button.gameObject != null) Destroy(_button.gameObject);
+            return false;
+        }
+#endif
+
+        private static int ResolveLocalCasterIndex()
+        {
+            var gsm = FindFirstObjectByType<Tigerverse.Core.GameStateManager>();
+            return gsm != null ? gsm.localCasterIndex : 0;
         }
 
         private void EnterMRWithBumpAnchor()
         {
-            // Compute the world-space arena anchor: bump midpoint snapped
-            // to floor (Y=0). Bypass-button fallback: 1.5 m forward of the
-            // camera at floor height.
+            // Prefer the SHARED bump anchor that the SessionManager
+            // replicated across both clients (first valid bump wins).
+            // That guarantees both players' monsters land in the same
+            // physical floor spot. Fall back to the local bump or a
+            // forward-of-camera default if no shared value is available
+            // (single-player test, or SessionManager not present).
             Vector3 anchorPos;
+#if FUSION2
+            var sm = Tigerverse.Net.SessionManager.Instance;
+            if (sm != null && sm.BumpAnchorValid)
+            {
+                Vector3 shared = sm.BumpAnchor;
+                anchorPos = new Vector3(shared.x, 0f, shared.z);
+            }
+            else
+#endif
             if (_bumpMidpointValid)
             {
                 anchorPos = new Vector3(_bumpMidpointWorld.x, 0f, _bumpMidpointWorld.z);
@@ -349,20 +420,69 @@ namespace Tigerverse.Combat
             anchorGo.transform.position = anchorPos;
             anchorGo.transform.rotation = Quaternion.identity;
 
+            // Reparent EVERYTHING that needs to come to the MR arena.
+            // Three sources, in order of priority:
+            //  1) The actual spawned monster GameObjects on
+            //     GameStateManager — these are the real scribbles
+            //     parented to the tablet anchors during SpawnFlow. They
+            //     are what the player needs to see in MR. Without
+            //     reparenting, they stay in the Title scene and are
+            //     invisible after the camera swap.
+            //  2) The MonsterSpawnPivotA/B GameObjects, which are used
+            //     by the egg phase + the DebugMRJump dummy test path.
+            //  3) The TabletAnchors from GameStateManager — defensive
+            //     in case the monster references got lost.
+            var gsm = FindFirstObjectByType<Tigerverse.Core.GameStateManager>();
+
+            // Real production monsters first.
+            ReparentToArena(gsm != null ? gsm.MonsterAGameObject : null,
+                            anchorGo.transform,
+                            new Vector3(-0.6f, 0f, 0f));
+            ReparentToArena(gsm != null ? gsm.MonsterBGameObject : null,
+                            anchorGo.transform,
+                            new Vector3( 0.6f, 0f, 0f));
+
+            // Dummy / egg-phase pivots (DebugMRJump uses these).
             var pivotA = GameObject.Find("MonsterSpawnPivotA");
             var pivotB = GameObject.Find("MonsterSpawnPivotB");
-            if (pivotA != null)
+            ReparentToArena(pivotA, anchorGo.transform, new Vector3(-0.6f, 0f, 0f));
+            ReparentToArena(pivotB, anchorGo.transform, new Vector3( 0.6f, 0f, 0f));
+
+            // Tablet anchors as a defensive fallback (real monsters are
+            // children of these in the production flow).
+            if (gsm != null && gsm.TabletAnchors != null)
             {
-                pivotA.transform.SetParent(anchorGo.transform, worldPositionStays: false);
-                pivotA.transform.localPosition = new Vector3(-0.6f, 0f, 0f);
-            }
-            if (pivotB != null)
-            {
-                pivotB.transform.SetParent(anchorGo.transform, worldPositionStays: false);
-                pivotB.transform.localPosition = new Vector3(0.6f, 0f, 0f);
+                int idx = 0;
+                foreach (var ta in gsm.TabletAnchors)
+                {
+                    if (ta == null) continue;
+                    Vector3 slot = idx == 0 ? new Vector3(-0.6f, 0f, 0f) : new Vector3(0.6f, 0f, 0f);
+                    ReparentToArena(ta.gameObject, anchorGo.transform, slot);
+                    idx++;
+                }
             }
 
             MRSession.Enter(anchorGo.transform);
+        }
+
+        private static void ReparentToArena(GameObject go, Transform arena, Vector3 localSlot)
+        {
+            if (go == null || arena == null) return;
+            if (go.transform.parent == arena) return;
+            // PRESERVE world position. The previous behaviour was
+            // worldPositionStays:false + explicit localPosition override,
+            // which teleported every reparented object to a fixed slot
+            // relative to the bump midpoint. For the dummy-scribble test,
+            // that meant the capsules the user spawned with LEFT X (which
+            // were already nicely in front of them in VR) would jump to
+            // some position behind them after the bump. Same problem in
+            // production: monsters were yanked from wherever they hatched
+            // to slots that may not even be in the player's view. Keep
+            // them where they are, just give them an arena parent so we
+            // can clean them up later.
+            go.transform.SetParent(arena, worldPositionStays: true);
+            // Force the GO active in case anything previously hid it.
+            if (!go.activeSelf) go.SetActive(true);
         }
 
         private void OnDestroy()

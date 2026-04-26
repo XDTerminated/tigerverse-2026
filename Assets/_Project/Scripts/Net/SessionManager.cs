@@ -55,6 +55,19 @@ namespace Tigerverse.Net
         [Networked, Capacity(4)] public NetworkArray<int> MovesA => default;
         [Networked, Capacity(4)] public NetworkArray<int> MovesB => default;
 
+        // ─── Synchronized fist-bump / READY handshake ────────────────────
+        // Each ReadyHandshake.Fire() RPCs into RPC_PostReady and the
+        // resulting [Networked] state replicates to both peers. Both
+        // handshakes block until BOTH ReadyP1 && ReadyP2 are true so
+        // the MR transition + battle start happens in lockstep on both
+        // headsets. The first valid bump midpoint posted wins and is
+        // used as the shared MR arena anchor on both clients (so both
+        // players' monsters land in the same physical floor spot).
+        [Networked] public bool    ReadyP1         { get; set; }
+        [Networked] public bool    ReadyP2         { get; set; }
+        [Networked] public Vector3 BumpAnchor      { get; set; }
+        [Networked] public bool    BumpAnchorValid { get; set; }
+
         // Local C# events (not networked) — observers (BattleManager, FX) subscribe.
         public event Action<byte, int> OnMoveSubmitted;
         public event Action<byte, int, int, byte> OnMoveResolved;
@@ -91,6 +104,28 @@ namespace Tigerverse.Net
             {
                 Debug.LogException(e);
             }
+        }
+
+        /// <summary>
+        /// Each client posts its own ready+bump-midpoint here. The state
+        /// authority writes the per-player ready flag and (if not already
+        /// set) records the bump midpoint as the shared MR arena anchor.
+        /// First valid bump wins so both clients use the same physical
+        /// point — the second client's bump is harmless (BumpAnchorValid
+        /// is already true).
+        /// </summary>
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        public void RPC_PostReady(int casterIndex, bool hasBumpMidpoint, Vector3 bumpMidpointWorld)
+        {
+            if (casterIndex == 0) ReadyP1 = true;
+            else                   ReadyP2 = true;
+
+            if (hasBumpMidpoint && !BumpAnchorValid)
+            {
+                BumpAnchor      = bumpMidpointWorld;
+                BumpAnchorValid = true;
+            }
+            Debug.Log($"[SessionManager] RPC_PostReady caster={casterIndex} bump={(hasBumpMidpoint ? bumpMidpointWorld.ToString("F2") : "none")} → ReadyP1={ReadyP1} ReadyP2={ReadyP2}");
         }
 
         /// <summary>

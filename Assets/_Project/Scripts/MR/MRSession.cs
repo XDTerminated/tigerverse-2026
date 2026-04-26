@@ -99,9 +99,12 @@ namespace Tigerverse.MR
         }
 
 #if UNITY_XR_ARFOUNDATION || UNITY_XR_META_OPENXR
-        // Disable every camera + XR rig that ISN'T inside BattleMR so the
-        // AR camera is the only one rendering. Without this the lobby
-        // camera draws on top and you see black instead of passthrough.
+        // Disable only the CAMERAS outside BattleMR so the AR camera is
+        // the sole renderer. Leave XR Origin GameObjects alive — disabling
+        // them tears down their InputActionManager / TrackedPoseDriver
+        // wiring and the Quest's controllers + head tracking go dead, which
+        // is what produced the "black + white circle" symptom (the white
+        // circle was the OS recenter prompt because head tracking died).
         private static void DisableOtherRigs()
         {
             var mrScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName("BattleMR");
@@ -110,12 +113,6 @@ namespace Tigerverse.MR
                 if (cam == null) continue;
                 if (mrScene.IsValid() && cam.gameObject.scene == mrScene) continue;
                 cam.enabled = false;
-            }
-            foreach (var origin in Object.FindObjectsByType<Unity.XR.CoreUtils.XROrigin>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (origin == null) continue;
-                if (mrScene.IsValid() && origin.gameObject.scene == mrScene) continue;
-                origin.gameObject.SetActive(false);
             }
         }
 

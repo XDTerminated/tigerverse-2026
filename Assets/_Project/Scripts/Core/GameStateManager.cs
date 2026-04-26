@@ -51,6 +51,13 @@ namespace Tigerverse.Core
         private GameObject monsterAGo;
         private GameObject monsterBGo;
 
+        // Public accessors so other systems (ReadyHandshake's MR transition,
+        // BattleManager hookups) can grab the spawned monster GameObjects
+        // without having to GameObject.Find them by name.
+        public GameObject MonsterAGameObject => monsterAGo;
+        public GameObject MonsterBGameObject => monsterBGo;
+        public TabletAnchor[] TabletAnchors => tabletAnchors;
+
         private void Awake()
         {
             if (config == null)

@@ -29,6 +29,17 @@ namespace Tigerverse.EditorTools
                 return;
             }
 
+            // 0) Don't even try to build mid-compile — Unity will reject it
+            // with "scripts are compiling" and the build pipeline won't
+            // recover cleanly. Force a finish + wait, then continue.
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                Debug.Log("[Tigerverse/Build] Waiting for in-flight script compilation to finish before building...");
+                UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+                EditorApplication.delayCall += BuildQuestApk;
+                return;
+            }
+
             // 1) Make sure we're on Android.
             if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android)
             {
