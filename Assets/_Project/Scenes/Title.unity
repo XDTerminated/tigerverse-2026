@@ -17885,7 +17885,7 @@ Material:
     - _PaperTexScale: 0.6
     - _PencilContrast: 1.2
     - _PencilScale: 140
-    - _PencilStrength: 0.85
+    - _PencilStrength: 0
     - _Smoothness: 0.04
     m_Colors:
     - _BBoxMin: {r: -0.5, g: -0.5, b: -0.5, a: 0}
