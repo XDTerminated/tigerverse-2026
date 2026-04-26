@@ -25,7 +25,7 @@ export async function createImageTo3dTask(imageDataUri: string): Promise<string>
       should_texture: false,    // we triplanar-tint in Unity instead
       target_formats: ['glb'],
       ai_model: 'meshy-6',      // meshy-6 has much better depth inference for 2D doodles
-      model_type: 'standard',   // not lowpoly — gives proper rounded volumes
+      model_type: 'standard',   // not lowpoly, gives proper rounded volumes
       should_remesh: true,      // proper 3D topology instead of cookie-cut extrusion
       topology: 'quad',
       target_polycount: 30000,

@@ -15,7 +15,7 @@ namespace Tigerverse.Net
     /// Owns the Fusion NetworkRunner, hosts/joins a Shared-mode room by code,
     /// and spawns the SessionManager once connected (host only).
     /// </summary>
-    // No [RequireComponent(typeof(NetworkRunner))] — we destroy + recreate it on each
+    // No [RequireComponent(typeof(NetworkRunner))], we destroy + recreate it on each
     // host/join cycle (Fusion runners are single-use), and RequireComponent would block DestroyImmediate.
     public class SessionRunner : MonoBehaviour, INetworkRunnerCallbacks
     {
@@ -48,7 +48,7 @@ namespace Tigerverse.Net
         {
             if (_starting)
             {
-                Debug.LogWarning("[SessionRunner] StartShared ignored — already starting.");
+                Debug.LogWarning("[SessionRunner] StartShared ignored, already starting.");
                 return false;
             }
             _starting = true;
@@ -124,7 +124,7 @@ namespace Tigerverse.Net
             }
             else if (Runner.IsSharedModeMasterClient && sessionManagerPrefab == null)
             {
-                Debug.LogWarning("[SessionRunner] sessionManagerPrefab unassigned — SessionManager will NOT spawn. Drag the prefab into the inspector field on Bootstrap.");
+                Debug.LogWarning("[SessionRunner] sessionManagerPrefab unassigned, SessionManager will NOT spawn. Drag the prefab into the inspector field on Bootstrap.");
             }
 
                 try { OnRunnerConnected?.Invoke(); } catch (Exception e) { Debug.LogException(e); }

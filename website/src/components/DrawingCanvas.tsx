@@ -182,7 +182,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
     [],
   );
 
-  // Native event listeners — React 19 attaches touch listeners as passive,
+  // Native event listeners, React 19 attaches touch listeners as passive,
   // which makes preventDefault() a silent no-op on iOS. Attaching directly
   // with { passive: false } is the only reliable way to capture Apple
   // Pencil and finger input on iPad without the browser hijacking it.
@@ -257,7 +257,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
 
     // Pinch-zoom uses iOS-only gesture events that ignore touch-action: none.
     // Cancel these explicitly. We deliberately do NOT cancel touchstart/move/end
-    // on iOS — pointer events are synthesized from those, and preventDefault'ing
+    // on iOS, pointer events are synthesized from those, and preventDefault'ing
     // them suppresses the pointer events we depend on.
     const blockGesture = (e: Event) => e.preventDefault();
 

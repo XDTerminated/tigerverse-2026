@@ -70,7 +70,7 @@ namespace Tigerverse.UI
 
                 if (fallbackTextLabel != null)
                 {
-                    // QR available — keep label small/disabled
+                    // QR available, keep label small/disabled
                     fallbackTextLabel.gameObject.SetActive(false);
                 }
             }
@@ -85,7 +85,7 @@ namespace Tigerverse.UI
 #else
             if (!warnedNoZxing)
             {
-                Debug.LogWarning("ZXing.Net not present — QR will display as URL text only. Install ZXing.Net DLL into Assets/Plugins to enable QR rendering, then add ZXING to Player → Scripting Define Symbols.");
+                Debug.LogWarning("ZXing.Net not present, QR will display as URL text only. Install ZXing.Net DLL into Assets/Plugins to enable QR rendering, then add ZXING to Player → Scripting Define Symbols.");
                 warnedNoZxing = true;
             }
 

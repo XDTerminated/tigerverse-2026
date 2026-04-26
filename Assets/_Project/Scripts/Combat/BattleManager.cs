@@ -325,7 +325,7 @@ namespace Tigerverse.Combat
             if (move.castSfx != null && casterPivot != null)
                 AudioSource.PlayClipAtPoint(move.castSfx, casterPivot.position);
 
-            // 3. Caster lunge animation (parallel — don't yield).
+            // 3. Caster lunge animation (parallel, don't yield).
             if (casterPivot != null && move.specialFlag != MoveSO.SpecialFlag.HealSelf)
             {
                 StartCoroutine(LungeCoroutine(casterPivot, 0.3f, castDuration * 0.5f));

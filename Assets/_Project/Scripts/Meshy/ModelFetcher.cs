@@ -52,7 +52,7 @@ namespace Tigerverse.Meshy
         public int requestTimeoutSec = 30;
 
         [Tooltip("If true, paint the player's drawing across the GLB via flat planar DrawingProjector. " +
-                 "Looks like a sticker — usually leave OFF.")]
+                 "Looks like a sticker, usually leave OFF.")]
         public bool applyDrawingProjection = false;
 
         [Tooltip("If true (recommended), tint the GLB by the drawing's dominant color and triplanar-project " +
@@ -126,7 +126,7 @@ namespace Tigerverse.Meshy
                 yield break;
             }
 
-            // 0) Pre-fetch drawing image first (small, ~50–200KB) so we can
+            // 0) Pre-fetch drawing image first (small, ~50,200KB) so we can
             //    spawn the floating "drawing reveal" card immediately and
             //    have something visual happening during the slow GLB load.
             Texture2D drawingTex = devOverrideDrawingTex;
@@ -165,7 +165,7 @@ namespace Tigerverse.Meshy
             {
                 // (a) Direct descendants of parent.
                 egg = parent.GetComponentInChildren<Tigerverse.UI.HatchingEggSequence>(includeInactive: true);
-                // (b) Walk up — slot presenter usually spawns under a sibling/grandparent of `parent`.
+                // (b) Walk up, slot presenter usually spawns under a sibling/grandparent of `parent`.
                 Transform p = parent.parent;
                 while (egg == null && p != null)
                 {
@@ -207,7 +207,7 @@ namespace Tigerverse.Meshy
             }
             else
             {
-                Debug.LogWarning("[ModelFetcher] Hatching egg SKIPPED — spawnHatchingEgg=false or parent=null.");
+                Debug.LogWarning("[ModelFetcher] Hatching egg SKIPPED, spawnHatchingEgg=false or parent=null.");
             }
 
             // 1) Download the GLB binary.
@@ -292,7 +292,7 @@ namespace Tigerverse.Meshy
             //    could spawn during the slow GLB load.)
 
             // 6) Apply drawing onto the mesh.
-            // Preferred: triplanar colorize — uses the drawing's dominant color as the tint
+            // Preferred: triplanar colorize, uses the drawing's dominant color as the tint
             // and softly wraps drawing detail across 3 axes. Looks like the doodle, not a sticker.
             // Optional: flat planar projection (legacy DrawingProjector) for the original "sticker" look.
             try
@@ -393,7 +393,7 @@ namespace Tigerverse.Meshy
                 }
             }
 
-            // 9.5) Floating stats card — appears when local player hovers near
+            // 9.5) Floating stats card, appears when local player hovers near
             //      the monster. Read-only display of HP/ATK/SPD/element/moves.
             if (container.GetComponent<Tigerverse.Combat.MonsterHoverStats>() == null)
             {

@@ -44,8 +44,8 @@ namespace Tigerverse.Voice
             var cfg = BackendConfig.Load();
             if (cfg == null || string.IsNullOrEmpty(cfg.groqApiKey))
             {
-                Debug.LogWarning("[GroqChatClient] groqApiKey not set on BackendConfig — returning fallback reply.");
-                onReply?.Invoke("Hmm — my memory's foggy today. Try asking again after the egg hatches.");
+                Debug.LogWarning("[GroqChatClient] groqApiKey not set on BackendConfig, returning fallback reply.");
+                onReply?.Invoke("Hmm, my memory's foggy today. Try asking again after the egg hatches.");
                 yield break;
             }
 

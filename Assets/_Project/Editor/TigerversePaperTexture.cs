@@ -70,7 +70,7 @@ namespace Tigerverse.EditorTools
                     }
                 }
 
-                Debug.Log($"[Tigerverse] Paper003 downloaded — {copied} texture(s) saved to {DestFolder}. Now spawn a test sphere or restart Play to see it.");
+                Debug.Log($"[Tigerverse] Paper003 downloaded, {copied} texture(s) saved to {DestFolder}. Now spawn a test sphere or restart Play to see it.");
             }
             catch (System.Exception e)
             {

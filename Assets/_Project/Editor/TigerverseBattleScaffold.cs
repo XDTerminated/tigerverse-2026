@@ -17,7 +17,7 @@ namespace Tigerverse.EditorTools
             var cfg = AssetDatabase.LoadAssetAtPath<BackendConfig>("Assets/_Project/Resources/BackendConfig.asset");
             if (cfg == null)
             {
-                Debug.LogError("[Tigerverse] BackendConfig.asset missing — run 'Setup → Generate Default Moves & Catalog' first.");
+                Debug.LogError("[Tigerverse] BackendConfig.asset missing, run 'Setup → Generate Default Moves & Catalog' first.");
                 return;
             }
             var cfgSo = new SerializedObject(cfg);

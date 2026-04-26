@@ -68,7 +68,7 @@ namespace Tigerverse.Net
         [Networked] public Vector3 BumpAnchor      { get; set; }
         [Networked] public bool    BumpAnchorValid { get; set; }
 
-        // Local C# events (not networked) — observers (BattleManager, FX) subscribe.
+        // Local C# events (not networked), observers (BattleManager, FX) subscribe.
         public event Action<byte, int> OnMoveSubmitted;
         public event Action<byte, int, int, byte> OnMoveResolved;
 
@@ -111,7 +111,7 @@ namespace Tigerverse.Net
         /// authority writes the per-player ready flag and (if not already
         /// set) records the bump midpoint as the shared MR arena anchor.
         /// First valid bump wins so both clients use the same physical
-        /// point — the second client's bump is harmless (BumpAnchorValid
+        /// point, the second client's bump is harmless (BumpAnchorValid
         /// is already true).
         /// </summary>
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]

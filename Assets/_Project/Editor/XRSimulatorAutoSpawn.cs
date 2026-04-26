@@ -10,7 +10,7 @@ namespace Tigerverse.EditorTools
     /// in the editor, so laptop testing without a headset gets simulated HMD +
     /// controllers (WASD/QE to move, mouse to look, RMB to switch which
     /// device is being driven, T/G to toggle device, etc). Lives only as long
-    /// as Play Mode runs — never saved into a scene.
+    /// as Play Mode runs, never saved into a scene.
     ///
     /// The prefab is the standard one shipped with XR Interaction Toolkit's
     /// "XR Device Simulator" sample, copied into Assets/Samples/.

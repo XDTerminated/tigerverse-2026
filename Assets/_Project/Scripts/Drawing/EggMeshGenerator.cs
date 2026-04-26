@@ -35,7 +35,7 @@ namespace Tigerverse.Drawing
             return GenerateRange(c, 0, Mathf.Max(4, c.latSegments), meshName);
         }
 
-        // Returns (top, bottom) — meshes for the upper and lower halves split at
+        // Returns (top, bottom), meshes for the upper and lower halves split at
         // approximately V = splitV (UV-space, where 1.0 is the top apex and 0.0
         // is the bottom apex).
         public static (Mesh top, Mesh bottom) GenerateSplit(Config c, float splitV = 0.50f, string baseName = "TigerverseEgg")

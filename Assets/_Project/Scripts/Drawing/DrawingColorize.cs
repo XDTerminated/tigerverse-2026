@@ -4,7 +4,7 @@ namespace Tigerverse.Drawing
 {
     /// <summary>
     /// Replaces every renderer's material on the GameObject with a triplanar-projected
-    /// drawing material — so the mesh takes the drawing's dominant color as its tint
+    /// drawing material, so the mesh takes the drawing's dominant color as its tint
     /// and shows hints of the drawing detail wrapping around 3 axes (no flat sticker).
     /// </summary>
     public static class DrawingColorize
@@ -13,11 +13,11 @@ namespace Tigerverse.Drawing
         {
             if (root == null)
             {
-                Debug.LogWarning("[DrawingColorize] root is null — skipping.");
+                Debug.LogWarning("[DrawingColorize] root is null, skipping.");
                 return;
             }
 
-            // No drawing? Still apply the paper material — without it the
+            // No drawing? Still apply the paper material, without it the
             // monster keeps Meshy's native peachy/skin-toned material and
             // looks nothing like a paper-craft figure. Use a 1×1 white
             // texture so the shader's drawing-watermark sampler has a
@@ -30,7 +30,7 @@ namespace Tigerverse.Drawing
             }
 
             Color tint = hasDrawing ? SampleDominantColor(drawingTex) : new Color(0.7f, 0.7f, 0.7f);
-            // Boost the tint a bit so the dominant color pops — sampling sometimes
+            // Boost the tint a bit so the dominant color pops, sampling sometimes
             // returns muted greys when ink is thin or anti-aliased.
             if (hasDrawing) tint = BoostSaturation(tint, 1.4f);
 
@@ -40,13 +40,13 @@ namespace Tigerverse.Drawing
             if (stylized == null)
             {
                 Debug.LogWarning("[DrawingColorize] Stylized shader 'Tigerverse/DrawingStylized' not found. " +
-                                 "Falling back to URP/Lit. (Shader probably failed to compile — check Console for shader errors.)");
+                                 "Falling back to URP/Lit. (Shader probably failed to compile, check Console for shader errors.)");
             }
 
             // (Previously this also tried to clone TestSphere_Red's
             // sharedMaterial. Removed: TigerverseShaderTest.SpawnSphereRed
             // creates a fresh TestSphere_Red with a default white URP/Lit
-            // material then immediately calls Apply — so cloning from it
+            // material then immediately calls Apply, so cloning from it
             // would copy the default material, not the scene-configured
             // paper one. Building explicitly from the shader with the
             // exact scene values is deterministic.)
@@ -62,7 +62,7 @@ namespace Tigerverse.Drawing
             // Compute the model's WORLD-space bounding box. The shader
             // projects the drawing using positionWS, so we need world
             // bounds to align it correctly. Object-space bounds were
-            // unreliable on nested glTFast hierarchies — every leaf mesh
+            // unreliable on nested glTFast hierarchies, every leaf mesh
             // had its own local origin and the drawing landed on a tiny
             // corner of the model.
             Bounds wsBounds = ComputeWorldBounds(root);
@@ -90,7 +90,7 @@ namespace Tigerverse.Drawing
                     mat = new Material(stylized);
                     // Set EVERY property explicitly. The shader CBUFFER's
                     // serialized defaults aren't always honoured by `new
-                    // Material(shader)` on URP — fields can come back zero,
+                    // Material(shader)` on URP, fields can come back zero,
                     // which makes _PaperTexScale=0 → divide-by-zero in the
                     // triplanar UV → garbage paper sampling → monsters
                     // either look black or mirror-shiny.
@@ -118,7 +118,7 @@ namespace Tigerverse.Drawing
                 }
                 else
                 {
-                    // URP/Lit fallback. Stylized shader was missing — most
+                    // URP/Lit fallback. Stylized shader was missing, most
                     // likely failed to compile or wasn't included in the
                     // build. Use the paper texture as the base map with a
                     // warm-white tint, *not* tinted by the drawing's
@@ -201,7 +201,7 @@ namespace Tigerverse.Drawing
         }
 
         // Resolve the scene's reference paper material (TestSphere_Red's
-        // shared material). NOT cached — caching across edit-mode menu
+        // shared material). NOT cached, caching across edit-mode menu
         // invocations risks holding a destroyed Material reference, and
         // resolving every spawn is cheap. Returns null if the sphere has
         // been removed; caller falls back to building a fresh material
@@ -224,7 +224,7 @@ namespace Tigerverse.Drawing
             }
             if (match == null)
             {
-                Debug.LogWarning("[DrawingColorize] TestSphere_Red not found in scene — falling back to building a paper material from shader defaults. Spawn one via 'Tigerverse → Test → Spawn Shader Test Sphere'.");
+                Debug.LogWarning("[DrawingColorize] TestSphere_Red not found in scene, falling back to building a paper material from shader defaults. Spawn one via 'Tigerverse → Test → Spawn Shader Test Sphere'.");
                 return null;
             }
             var refMat = match.sharedMaterial;

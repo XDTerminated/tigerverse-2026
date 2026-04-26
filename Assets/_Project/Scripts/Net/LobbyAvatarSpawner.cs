@@ -41,14 +41,14 @@ namespace Tigerverse.Net
             {
                 if (playerAvatarPrefab == null)
                 {
-                    Debug.LogError("[LobbyAvatarSpawner] playerAvatarPrefab is NULL — drag PlayerAvatar.prefab into the field on the Bootstrap GO, or run 'Tigerverse → Lobby → Build Avatar Prefab + Wire Spawner + WASD + Joystick'.");
+                    Debug.LogError("[LobbyAvatarSpawner] playerAvatarPrefab is NULL, drag PlayerAvatar.prefab into the field on the Bootstrap GO, or run 'Tigerverse → Lobby → Build Avatar Prefab + Wire Spawner + WASD + Joystick'.");
                     return;
                 }
                 _spawnedLocal = true;
                 var no = playerAvatarPrefab.GetComponent<NetworkObject>();
                 if (no == null)
                 {
-                    Debug.LogError("[LobbyAvatarSpawner] playerAvatarPrefab has no NetworkObject — cannot spawn.");
+                    Debug.LogError("[LobbyAvatarSpawner] playerAvatarPrefab has no NetworkObject, cannot spawn.");
                     return;
                 }
 
@@ -80,7 +80,7 @@ namespace Tigerverse.Net
                 var spawned = runner.Spawn(no, spawnPos, Quaternion.identity, player);
                 if (spawned == null)
                 {
-                    Debug.LogError("[LobbyAvatarSpawner] Runner.Spawn returned NULL — prefab may not be in Fusion's prefab table. Run 'Tools → Fusion → Rebuild Prefab Table'.");
+                    Debug.LogError("[LobbyAvatarSpawner] Runner.Spawn returned NULL, prefab may not be in Fusion's prefab table. Run 'Tools → Fusion → Rebuild Prefab Table'.");
                     _spawnedLocal = false; // allow retry
                 }
                 else

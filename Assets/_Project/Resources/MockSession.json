@@ -27,7 +27,7 @@
       "speed": 1.0,
       "element": "fire",
       "moves": ["Fireball", "Watergun", "Taunt"],
-      "flavorText": "Lazy, smug, and warm to the touch — until provoked."
+      "flavorText": "Lazy, smug, and warm to the touch, until provoked."
     }
   }
 }

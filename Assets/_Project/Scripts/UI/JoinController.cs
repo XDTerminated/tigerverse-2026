@@ -17,7 +17,7 @@ namespace Tigerverse.UI
         [SerializeField] private GameStateManager gsm;
         [SerializeField] private TMP_Text statusLabel; // optional, shows "Hosting code: ABCD" or "Joining ABCD..."
 
-        // Pastel red for validation errors — soft enough to read as "warning"
+        // Pastel red for validation errors, soft enough to read as "warning"
         // not "fatal", matches the doodle/comic palette better than #DC2626.
         // (Tailwind red-400.)
         private static readonly Color ErrorColor = new Color(0xF8 / 255f, 0x71 / 255f, 0x71 / 255f, 1f);

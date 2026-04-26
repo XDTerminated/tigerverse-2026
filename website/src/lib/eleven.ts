@@ -1,6 +1,6 @@
 import { ELEVENLABS_API_KEY } from 'astro:env/server';
 
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel — works on every account
+const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel, works on every account
 const DEFAULT_MODEL_ID = 'eleven_turbo_v2_5';
 
 async function callTts(text: string, voiceId = DEFAULT_VOICE_ID): Promise<Buffer> {

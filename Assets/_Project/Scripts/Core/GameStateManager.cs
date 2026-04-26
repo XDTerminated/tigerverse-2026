@@ -105,17 +105,18 @@ namespace Tigerverse.Core
         private IEnumerator HostFlow()
         {
             SetState(AppState.Lobby);
+            Tigerverse.Voice.LobbyMusicPlayer.Instance.Play();
 
             // HTTP session polling (which drives the eggs / tutorial / hatch)
             // is independent of Photon. Kick it off immediately so the player
             // sees their own egg appear the moment the website registers
-            // their drawing — even if Photon connect is slow, fails, or
+            // their drawing, even if Photon connect is slow, fails, or
             // hasn't been configured (empty photonAppId in BackendConfig).
             BeginDrawWait();
 
             if (runner == null)
             {
-                Debug.LogWarning("[GameStateManager] SessionRunner missing — Photon room won't host, but HTTP polling continues.");
+                Debug.LogWarning("[GameStateManager] SessionRunner missing, Photon room won't host, but HTTP polling continues.");
                 yield break;
             }
 
@@ -124,20 +125,21 @@ namespace Tigerverse.Core
 
             if (!t.Result)
             {
-                Debug.LogWarning("[GameStateManager] CreateRoom failed — HTTP polling continues anyway.");
+                Debug.LogWarning("[GameStateManager] CreateRoom failed, HTTP polling continues anyway.");
             }
         }
 
         private IEnumerator JoinFlow()
         {
             SetState(AppState.Lobby);
+            Tigerverse.Voice.LobbyMusicPlayer.Instance.Play();
 
             // Same reasoning as HostFlow: don't gate the HTTP poll on Photon.
             BeginDrawWait();
 
             if (runner == null)
             {
-                Debug.LogWarning("[GameStateManager] SessionRunner missing — cannot join Photon room, but HTTP polling continues.");
+                Debug.LogWarning("[GameStateManager] SessionRunner missing, cannot join Photon room, but HTTP polling continues.");
                 yield break;
             }
 
@@ -146,7 +148,7 @@ namespace Tigerverse.Core
 
             if (!t.Result)
             {
-                Debug.LogWarning("[GameStateManager] JoinRoom failed — HTTP polling continues anyway.");
+                Debug.LogWarning("[GameStateManager] JoinRoom failed, HTTP polling continues anyway.");
             }
         }
 
@@ -188,7 +190,7 @@ namespace Tigerverse.Core
 
             if (apiClient == null)
             {
-                Debug.LogWarning("[GameStateManager] SessionApiClient missing — cannot poll.");
+                Debug.LogWarning("[GameStateManager] SessionApiClient missing, cannot poll.");
                 return;
             }
 
@@ -236,7 +238,7 @@ namespace Tigerverse.Core
 
             if (modelFetcher == null)
             {
-                Debug.LogWarning("[GameStateManager] ModelFetcher missing — cannot spawn monsters.");
+                Debug.LogWarning("[GameStateManager] ModelFetcher missing, cannot spawn monsters.");
                 yield break;
             }
 
@@ -306,7 +308,7 @@ namespace Tigerverse.Core
             }
             else
             {
-                // No egg wired — still fire the spawn cry directly.
+                // No egg wired, still fire the spawn cry directly.
                 cryA?.PlaySpawn();
                 aDone = true;
             }
@@ -410,7 +412,7 @@ namespace Tigerverse.Core
             }
             else
             {
-                Debug.LogWarning("[GameStateManager] BattleManager missing — battle will not start.");
+                Debug.LogWarning("[GameStateManager] BattleManager missing, battle will not start.");
             }
         }
 
@@ -445,11 +447,11 @@ namespace Tigerverse.Core
             bool ready = false;
             handshake.OnLocalReady += () => ready = true;
 
-            Debug.Log("[GameStateManager] Inspection phase active — waiting for local player to ready up.");
+            Debug.Log("[GameStateManager] Inspection phase active, waiting for local player to ready up.");
             // Hard cap so we never deadlock if voice + button + bump all fail.
             float deadline = Time.time + 90f;
             while (!ready && Time.time < deadline) yield return null;
-            if (!ready) Debug.LogWarning("[GameStateManager] Inspection phase timed out — auto-advancing to battle.");
+            if (!ready) Debug.LogWarning("[GameStateManager] Inspection phase timed out, auto-advancing to battle.");
 
             if (hsGo != null) Destroy(hsGo);
 
@@ -478,7 +480,7 @@ namespace Tigerverse.Core
 
         // ─── Battle stance: park the local trainer behind their monster ───
         // Sightline becomes: [trainer camera] -> [own monster] -> [opponent].
-        // Called twice — once when the player readies up (before the VS
+        // Called twice, once when the player readies up (before the VS
         // cutscene) so the snap is instant from the player's POV, and again
         // at SetState(AppState.Battle) as a backstop against any rig
         // movement that snuck in during the cutscene. Locomotion is locked
@@ -517,6 +519,11 @@ namespace Tigerverse.Core
             var hudGo = new GameObject("BattleHUD", typeof(RectTransform));
             var hud = hudGo.AddComponent<BattleHUD>();
             hud.Configure(voiceRouter);
+
+            // Hand off the soundtrack: lobby music fades out, battle music
+            // fades in so the two never overlap.
+            Tigerverse.Voice.LobbyMusicPlayer.Instance.Stop();
+            Tigerverse.Voice.BattleMusicPlayer.Instance.Play();
         }
 
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)
@@ -529,6 +536,9 @@ namespace Tigerverse.Core
         private void HandleBattleEnd(int winnerIndex)
         {
             SetState(AppState.Result);
+
+            // Fade out the battle background music.
+            Tigerverse.Voice.BattleMusicPlayer.Instance.Stop();
 
             if (battle != null)
             {

@@ -23,14 +23,14 @@ namespace Tigerverse.Combat
         {
             if (localMonster == null)
             {
-                Debug.LogWarning("[BattleStance] localMonster is null — skipping.");
+                Debug.LogWarning("[BattleStance] localMonster is null, skipping.");
                 return;
             }
 
             var origin = Object.FindFirstObjectByType<XROrigin>();
             if (origin == null)
             {
-                Debug.LogWarning("[BattleStance] No XROrigin in scene — skipping.");
+                Debug.LogWarning("[BattleStance] No XROrigin in scene, skipping.");
                 return;
             }
 
@@ -71,7 +71,7 @@ namespace Tigerverse.Combat
             origin.MatchOriginUpCameraForward(Vector3.up, forward);
             origin.MoveCameraToWorldLocation(cameraTarget);
 
-            // Yaw the monster so it faces the SAME direction as the player —
+            // Yaw the monster so it faces the SAME direction as the player,
             // i.e. toward the opposing slot. The pivots in the scene have
             // identity rotation (world-Z forward), but the player's stance
             // forward is along world-X (or whichever axis connects the two

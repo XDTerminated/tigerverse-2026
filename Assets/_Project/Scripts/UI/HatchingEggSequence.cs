@@ -10,7 +10,7 @@ namespace Tigerverse.UI
     /// Procedural paper-craft egg that hovers above a player's pedestal,
     /// wobbles + cracks while their monster loads, then explodes open with
     /// the monster popping out. Mesh and material are built at runtime so
-    /// no prefab/asset wiring is required — just AddComponent and call
+    /// no prefab/asset wiring is required, just AddComponent and call
     /// Configure(drawingTex, optional).
     /// </summary>
     [DisallowMultipleComponent]
@@ -72,8 +72,8 @@ namespace Tigerverse.UI
         private ParticleSystem _dustCloud;     // soft white smoke puff
         private ParticleSystem _flash;         // bright instant flash
         private ParticleSystem _ring;          // expanding ground ring
-        private ParticleSystem _popInDust;     // monster reveal — soft white poof
-        private ParticleSystem _popInSparkles; // monster reveal — gold twinkle
+        private ParticleSystem _popInDust;     // monster reveal, soft white poof
+        private ParticleSystem _popInSparkles; // monster reveal, gold twinkle
         private static Texture2D _sparkleTex;
         private static Texture2D _dustTex;
         private static Mesh _shellChunkMesh;
@@ -96,7 +96,7 @@ namespace Tigerverse.UI
 
         /// <summary>
         /// Build / re-build the egg with an optional drawing sticker. Safe to
-        /// call repeatedly — destroys any existing internal egg first.
+        /// call repeatedly, destroys any existing internal egg first.
         /// </summary>
         public void Configure(Texture2D drawingTex)
         {
@@ -157,7 +157,7 @@ namespace Tigerverse.UI
             var sh = Shader.Find("Tigerverse/Egg");
             if (sh == null)
             {
-                Debug.LogWarning("[HatchingEggSequence] Shader 'Tigerverse/Egg' missing — falling back to URP/Lit (no cracks).");
+                Debug.LogWarning("[HatchingEggSequence] Shader 'Tigerverse/Egg' missing, falling back to URP/Lit (no cracks).");
                 sh = Shader.Find("Universal Render Pipeline/Lit");
             }
             _eggMaterial = new Material(sh);
@@ -206,7 +206,7 @@ namespace Tigerverse.UI
             Shader unlit = Shader.Find("Universal Render Pipeline/Unlit");
             if (unlit == null) unlit = Shader.Find("Unlit/Color");
 
-            // Progress bar background — dark inset.
+            // Progress bar background, dark inset.
             _progressBg = GameObject.CreatePrimitive(PrimitiveType.Quad);
             _progressBg.name = "ProgressBg";
             DestroyIfExists(_progressBg.GetComponent<Collider>());
@@ -218,7 +218,7 @@ namespace Tigerverse.UI
             else bgMat.color = new Color(0.12f, 0.10f, 0.08f, 1f);
             _progressBg.GetComponent<Renderer>().sharedMaterial = bgMat;
 
-            // Progress fill — bright warm bar that grows from left to right.
+            // Progress fill, bright warm bar that grows from left to right.
             _progressFill = GameObject.CreatePrimitive(PrimitiveType.Quad);
             _progressFill.name = "ProgressFill";
             DestroyIfExists(_progressFill.GetComponent<Collider>());
@@ -330,7 +330,7 @@ namespace Tigerverse.UI
 
         // ─── Texture/mesh generators (cached statically) ────────────────
         // Soft round-glow texture: bright core + smooth radial falloff. No
-        // rays — the previous 4-point version looked like throwing stars at
+        // rays, the previous 4-point version looked like throwing stars at
         // small particle sizes.
         private static void EnsureSparkleTexture()
         {
@@ -381,7 +381,7 @@ namespace Tigerverse.UI
             _dustTex = t;
         }
 
-        // Tiny crumpled paper triangle mesh — 3 verts with random offsets so
+        // Tiny crumpled paper triangle mesh, 3 verts with random offsets so
         // it doesn't read as a flat billboard. Used as ParticleSystem mesh.
         private static void EnsureShellChunkMesh()
         {
@@ -537,7 +537,7 @@ namespace Tigerverse.UI
             main.startSpeed    = new ParticleSystem.MinMaxCurve(1.5f, 3.0f);
             main.startSize     = new ParticleSystem.MinMaxCurve(0.012f, 0.030f);
             main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-            // Bright confetti palette — random gradient of warm + cool brights.
+            // Bright confetti palette, random gradient of warm + cool brights.
             main.startColor = new ParticleSystem.MinMaxGradient(BuildConfettiGradient());
             main.gravityModifier = 0.6f;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
@@ -845,7 +845,7 @@ namespace Tigerverse.UI
             if (_hatched) { onComplete?.Invoke(); yield break; }
             _hatched = true;
 
-            // Hide the floating UI as the hatch begins — name tag and
+            // Hide the floating UI as the hatch begins, name tag and
             // progress bar are wait-time furniture, not part of the reveal.
             HideFloatingUI();
 

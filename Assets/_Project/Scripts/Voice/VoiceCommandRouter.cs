@@ -154,7 +154,7 @@ namespace Tigerverse.Voice
                     if (isVirtual) continue;
 
                     micDeviceName = d;
-                    Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (laptop mode — no XR display running, skipping virtual headset mics). Available: [{string.Join(", ", devices)}]");
+                    Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (laptop mode, no XR display running, skipping virtual headset mics). Available: [{string.Join(", ", devices)}]");
                     return;
                 }
             }
@@ -193,7 +193,7 @@ namespace Tigerverse.Voice
         [SerializeField] private float tapRecordSec = 4f;
 
         [Header("Open-mic mode (Voice-Activity-Detection)")]
-        [Tooltip("If true, the router uses VAD: continuously listens, fires the transcription the instant the player stops speaking — no chunk timer.")]
+        [Tooltip("If true, the router uses VAD: continuously listens, fires the transcription the instant the player stops speaking, no chunk timer.")]
         [SerializeField] private bool openMicMode = false;
         [Tooltip("RMS amplitude required to BEGIN counting as 'speaking' (0..1). Should be ABOVE typical room noise.")]
         [SerializeField] private float vadStartThreshold = 0.006f;
@@ -227,7 +227,7 @@ namespace Tigerverse.Voice
             Debug.Log($"[VoiceCommandRouter] openMicMode = {on}");
         }
 
-        // Mute gate — used by the Professor tutorial (and combat announcer)
+        // Mute gate, used by the Professor tutorial (and combat announcer)
         // to prevent the mic from picking up its own TTS output through the
         // laptop speakers, which would otherwise loop back as fake questions.
         private bool _muted;
@@ -238,7 +238,7 @@ namespace Tigerverse.Voice
             _muted = muted;
             // IMPORTANT: do NOT call Microphone.End / Microphone.Start here.
             // On Quest, restarting the mic device causes a ~150 ms main-thread
-            // hitch — and we used to do that at the START AND END of every
+            // hitch, and we used to do that at the START AND END of every
             // single Professor TTS line, which the player perceived as the
             // game freezing on every new line. The mic stream is left
             // running; the muted flag below tells VadTick to drop samples
@@ -247,7 +247,7 @@ namespace Tigerverse.Voice
             {
                 // If we were mid-utterance when the mute flipped, abort it
                 // so the trailing TTS audio can't be spliced into a
-                // transcription. Just reset the state machine — the mic
+                // transcription. Just reset the state machine, the mic
                 // keeps streaming into the same circular clip.
                 _vadInSpeech = false;
             }
@@ -301,7 +301,7 @@ namespace Tigerverse.Voice
             }
             else if (_vadStarted)
             {
-                // Open-mic mode itself just flipped off (not just a mute) —
+                // Open-mic mode itself just flipped off (not just a mute),
                 // OK to stop the continuous recording.
                 StopVad();
             }
@@ -395,7 +395,7 @@ namespace Tigerverse.Voice
                 {
                     _vadInSpeech = true;
                     _vadSpeechStartPos = startSample;
-                    // Speech-START log silenced — kept too noisy in VR.
+                    // Speech-START log silenced, kept too noisy in VR.
                 }
                 _vadLastSpeechPos = currentPos;
             }
@@ -475,7 +475,7 @@ namespace Tigerverse.Voice
                 }
                 if (peak < openMicSilenceThreshold)
                 {
-                    // Silent chunk — skip transcription entirely.
+                    // Silent chunk, skip transcription entirely.
                     return;
                 }
             }
@@ -602,7 +602,7 @@ namespace Tigerverse.Voice
                 Debug.Log($"[Voice] Match → '{bestMove.displayName}', battle={(battle!=null?"OK":"NULL")}, casterIdx={casterIndex}");
 
                 // Per-move cooldown gate. Each move locks itself out for
-                // bestMove.cooldownSeconds after a successful cast — stronger
+                // bestMove.cooldownSeconds after a successful cast, stronger
                 // moves are tuned with longer cooldowns. Other moves stay
                 // available, so the player can still cycle through their kit.
                 if (_nextCastAt.TryGetValue(bestMove, out float readyAt) && Time.time < readyAt)

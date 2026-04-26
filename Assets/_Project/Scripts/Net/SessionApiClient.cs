@@ -96,9 +96,9 @@ namespace Tigerverse.Net
                     if (req.responseCode == 404)
                     {
                         // Expected until at least one player visits the join URL
-                        // on the website. Don't spam Warnings for this — it's
+                        // on the website. Don't spam Warnings for this, it's
                         // the steady-state while waiting for the first submit.
-                        Debug.Log($"[SessionApiClient] 404 — backend has no session for this code yet. Open '{config.backendBaseUrl.TrimEnd('/')}/join/{code}?p=1' (or p=2 for the joiner) in a browser and submit a drawing to create the session.");
+                        Debug.Log($"[SessionApiClient] 404, backend has no session for this code yet. Open '{config.backendBaseUrl.TrimEnd('/')}/join/{code}?p=1' (or p=2 for the joiner) in a browser and submit a drawing to create the session.");
                     }
                     else
                     {
@@ -145,7 +145,7 @@ namespace Tigerverse.Net
             // Cancel any previously-running poll loop so we don't end up
             // with N parallel coroutines firing GETs every interval. Each
             // press of the Host / Join button calls BeginDrawWait which
-            // calls this — without this guard the old loops keep going
+            // calls this, without this guard the old loops keep going
             // forever, multiplying request volume by N each press.
             if (_polling)
             {

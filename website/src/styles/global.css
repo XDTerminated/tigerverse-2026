@@ -36,7 +36,7 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Chunky brush slider — true native vertical via writing-mode.
+/* Chunky brush slider, true native vertical via writing-mode.
    Avoids rotation hacks; the browser positions the thumb directly. */
 .brush-slider-wrap {
   width: 32px;

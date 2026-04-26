@@ -20,7 +20,7 @@ namespace Tigerverse.Core
         {
             if (config == null)
             {
-                Debug.LogWarning("[AnnouncerTTS] No BackendConfig — skipping announce.");
+                Debug.LogWarning("[AnnouncerTTS] No BackendConfig, skipping announce.");
                 yield break;
             }
 

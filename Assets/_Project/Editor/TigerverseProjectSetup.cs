@@ -149,7 +149,7 @@ namespace Tigerverse.EditorTools
             var prop = so.FindProperty(fieldName);
             if (prop == null)
             {
-                Debug.LogWarning($"[Tigerverse] Field '{fieldName}' not found on {so.targetObject.GetType().Name} — skipping.");
+                Debug.LogWarning($"[Tigerverse] Field '{fieldName}' not found on {so.targetObject.GetType().Name}, skipping.");
                 return;
             }
             prop.objectReferenceValue = reference;

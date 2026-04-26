@@ -71,7 +71,7 @@ namespace Tigerverse.EditorTools
                 Object.DestroyImmediate(lineZ.GetComponent<Collider>());
             }
 
-            // Two spawn markers — colored discs the players will stand on.
+            // Two spawn markers, colored discs the players will stand on.
             CreateSpawnMarker(root.transform, "SpawnP0", new Vector3(-1.2f, 0.01f, 0), new Color(0.2f, 0.7f, 1f));
             CreateSpawnMarker(root.transform, "SpawnP1", new Vector3( 1.2f, 0.01f, 0), new Color(1f, 0.4f, 0.6f));
         }

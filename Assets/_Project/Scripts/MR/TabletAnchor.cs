@@ -14,7 +14,7 @@ namespace Tigerverse.MR
         [SerializeField] private Camera xrCamera;
         [SerializeField] private Transform rightControllerTransform;
         [SerializeField] private LineRenderer pointerLine;
-        [SerializeField] private string expectedQrPayload; // session code or join URL — set by GameStateManager
+        [SerializeField] private string expectedQrPayload; // session code or join URL, set by GameStateManager
         [SerializeField] private bool useMarkerTracking = true;
 
         public Transform anchorTransform { get; private set; }
@@ -60,7 +60,7 @@ namespace Tigerverse.MR
 #else
                 if (!warnedNoMetaSdk)
                 {
-                    Debug.LogWarning("[TabletAnchor] Meta XR SDK not defined — falling back to controller pointer placement. Define META_XR_SDK_DEFINED after importing Meta XR SDK.");
+                    Debug.LogWarning("[TabletAnchor] Meta XR SDK not defined, falling back to controller pointer placement. Define META_XR_SDK_DEFINED after importing Meta XR SDK.");
                     warnedNoMetaSdk = true;
                 }
                 UpdateControllerPointer();

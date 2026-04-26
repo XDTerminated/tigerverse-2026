@@ -14,14 +14,14 @@ namespace Tigerverse.UI
     /// "ready" and "cooling" states so the player can glance at their wrist
     /// and immediately see what's available.
     ///
-    /// Built programmatically — no scene/prefab wiring required. Spawn one
+    /// Built programmatically, no scene/prefab wiring required. Spawn one
     /// at battle start; <see cref="Configure"/> hooks it to the live
     /// <see cref="VoiceCommandRouter"/> for per-move cooldown reads.
     /// </summary>
     public class BattleHUD : MonoBehaviour
     {
         [Header("Wrist anchor")]
-        [Tooltip("World-space offset from the left controller — positions the panel above/in front of the wrist.")]
+        [Tooltip("World-space offset from the left controller, positions the panel above/in front of the wrist.")]
         public Vector3 wristOffset = new Vector3(0f, 0.06f, 0.04f);
         [Tooltip("Extra rotation applied after billboarding to the head, in degrees. Useful for tilting the panel forward off the wrist.")]
         public Vector3 panelTilt = new Vector3(15f, 0f, 0f);
@@ -46,7 +46,7 @@ namespace Tigerverse.UI
         private VoiceCommandRouter _voice;
         private MoveSO[] _moves;
 
-        // Per-tile elements — parallel arrays for fast Update.
+        // Per-tile elements, parallel arrays for fast Update.
         private Image[]   _tileBgs;
         private Image[]   _tileFills;
         private TMP_Text[] _nameTexts;
@@ -81,7 +81,7 @@ namespace Tigerverse.UI
 
         private void HandleMoveCast(MoveSO move)
         {
-            // Tile pulse on cast — flash the cooling tint immediately so the
+            // Tile pulse on cast, flash the cooling tint immediately so the
             // change is felt even before the cooldown timer ticks down.
             if (_moves == null) return;
             for (int i = 0; i < _moves.Length && i < tileCount; i++)
@@ -96,7 +96,7 @@ namespace Tigerverse.UI
 
         private void Update()
         {
-            // Re-resolve XR transforms occasionally — the rig can be
+            // Re-resolve XR transforms occasionally, the rig can be
             // (re)spawned partway through the session.
             if ((_leftCtrl == null || _head == null) && Time.unscaledTime - _lastFindAt > 0.5f)
             {
@@ -240,7 +240,7 @@ namespace Tigerverse.UI
             {
                 string label = (moves != null && i < moves.Length && moves[i] != null)
                     ? moves[i].displayName
-                    : $"— move {i + 1} —";
+                    : $", move {i + 1},";
                 BuildMoveTile(label, i);
             }
         }
@@ -267,7 +267,7 @@ namespace Tigerverse.UI
 #endif
             _tileBgs[index] = bgImg;
 
-            // Cooldown fill bar — sits inside the tile, drains horizontally.
+            // Cooldown fill bar, sits inside the tile, drains horizontally.
             var fillGo = new GameObject("Fill", typeof(RectTransform), typeof(Image));
             fillGo.transform.SetParent(go.transform, false);
             var fillRT = (RectTransform)fillGo.transform;
@@ -343,7 +343,7 @@ namespace Tigerverse.UI
             rt.sizeDelta = new Vector2(tileWidth + 40f, tileCount * tileHeight + (tileCount - 1) * tileGap + 40f);
             transform.localScale = Vector3.one * panelScale;
 
-            // Single moves panel — vertically stacked tiles.
+            // Single moves panel, vertically stacked tiles.
             _movesPanel = new GameObject("MovesPanel", typeof(RectTransform)).GetComponent<RectTransform>();
             _movesPanel.SetParent(transform, false);
             _movesPanel.anchorMin = new Vector2(0f, 0f);

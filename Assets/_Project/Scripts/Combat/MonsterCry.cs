@@ -23,7 +23,7 @@ namespace Tigerverse.Combat
                     audioSource = gameObject.AddComponent<AudioSource>();
             }
 
-            // Cries are gameplay-essential — fully 2D so they're always
+            // Cries are gameplay-essential, fully 2D so they're always
             // audible at full volume regardless of where the monster is or
             // where the listener is.
             audioSource.spatialBlend = 0f;

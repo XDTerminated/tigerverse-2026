@@ -6,9 +6,9 @@ namespace Tigerverse.Meshy
 {
     /// <summary>
     /// Procedural attack/hit/win/lose for monsters that lack a real rig.
-    /// Beefier than v1 — adds anticipation, squash & stretch, recoil flash,
+    /// Beefier than v1, adds anticipation, squash & stretch, recoil flash,
     /// particle trail on attack, victory spin, and dramatic flop on defeat.
-    /// Pure transforms + Mathf — no DOTween, no Animator, no extra assets.
+    /// Pure transforms + Mathf, no DOTween, no Animator, no extra assets.
     /// </summary>
     public class ProceduralPunchAttacker : MonoBehaviour
     {
@@ -103,7 +103,7 @@ namespace Tigerverse.Meshy
             Vector3 anticipationPos = start - localDir * (attackDistance * 0.25f);
             Vector3 peakPos = start + localDir * attackDistance;
 
-            // Phase 1: anticipation — pull back + crouch (squash on Y).
+            // Phase 1: anticipation, pull back + crouch (squash on Y).
             float t = 0f;
             while (t < attackAnticipation)
             {
@@ -115,7 +115,7 @@ namespace Tigerverse.Meshy
                 yield return null;
             }
 
-            // Phase 2: strike — fast lunge + stretch.
+            // Phase 2: strike, fast lunge + stretch.
             t = 0f;
             while (t < attackStrike)
             {
@@ -131,7 +131,7 @@ namespace Tigerverse.Meshy
             }
             transform.localPosition = peakPos;
 
-            // Phase 3: recover — eased return.
+            // Phase 3: recover, eased return.
             t = 0f;
             while (t < attackRecover)
             {

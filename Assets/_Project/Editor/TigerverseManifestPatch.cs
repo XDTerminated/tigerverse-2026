@@ -14,7 +14,7 @@ namespace Tigerverse.EditorTools
     /// The Meta Quest Support feature (com.unity.xr.openxr 1.13) injects
     ///   &lt;uses-feature android:name="oculus.software.eye_tracking"
     ///                  android:required="true" /&gt;
-    /// from a transitive library — it never lands in our source manifest, so
+    /// from a transitive library, it never lands in our source manifest, so
     /// editing src/main/AndroidManifest.xml directly does nothing. Instead we
     /// inject our own &lt;uses-feature ... required="false"
     /// tools:replace="android:required"&gt; into the launcher manifest,
@@ -47,7 +47,7 @@ namespace Tigerverse.EditorTools
             }
             if (!File.Exists(launcher))
             {
-                Debug.LogWarning($"[TigerverseManifestPatch] No launcher AndroidManifest.xml found near '{path}' — Quest 3/3S install may still fail.");
+                Debug.LogWarning($"[TigerverseManifestPatch] No launcher AndroidManifest.xml found near '{path}', Quest 3/3S install may still fail.");
                 return;
             }
 
@@ -70,7 +70,7 @@ namespace Tigerverse.EditorTools
             foreach (var feature in _featuresToRelax)
             {
                 // If we (or anyone) previously inserted this exact override,
-                // skip — idempotent.
+                // skip, idempotent.
                 string overridePattern = "android:name=\"" + Regex.Escape(feature) + "\"[^/>]*tools:replace=\"android:required\"";
                 if (Regex.IsMatch(xml, overridePattern)) continue;
 
@@ -81,7 +81,7 @@ namespace Tigerverse.EditorTools
             if (xml != original)
             {
                 File.WriteAllText(launcher, xml);
-                Debug.Log($"[TigerverseManifestPatch] Patched {launcher} — eye_tracking required=false (Quest 3 / 3S compat).");
+                Debug.Log($"[TigerverseManifestPatch] Patched {launcher}, eye_tracking required=false (Quest 3 / 3S compat).");
             }
         }
     }
