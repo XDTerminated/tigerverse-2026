@@ -1,3 +1,6 @@
+# Scribble Showdown
+Submitted to TigerVerse 2026 by Matthew Martin, Alvin Moy, and Sayam Gupta
+
 ## Inspiration
 We were inspired by both our previous project at TigerVerse 2025, ARtist, and also by the Pokémon franchise. ARtist showed us how cool it is to bring drawings into 3D space, and Pokémon got us thinking about what would happen if those drawings could battle each other!
 ## What it does
