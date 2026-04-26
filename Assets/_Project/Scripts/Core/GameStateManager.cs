@@ -388,6 +388,12 @@ namespace Tigerverse.Core
                     var statsForLocal = localCasterIndex == 0 ? statsA : statsB;
                     voiceRouter.Bind(battle, localCasterIndex, statsForLocal != null ? statsForLocal.moves : null);
 
+                    // Open-mic for combat — the player just shouts the move
+                    // name, no grip required. ReadyHandshake / ProfessorTutorial
+                    // OnDestroy paths turn this OFF when they tear down, so we
+                    // re-enable it here every time battle starts.
+                    voiceRouter.SetOpenMicMode(true);
+
                     // Announce the local player's moves via TTS so they know what to call out.
                     var ann = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
                     if (ann != null && statsForLocal != null && statsForLocal.moves != null && statsForLocal.moves.Length > 0)
@@ -395,7 +401,7 @@ namespace Tigerverse.Core
                         var moveNames = new System.Collections.Generic.List<string>();
                         foreach (var m in statsForLocal.moves) if (m != null) moveNames.Add(m.displayName);
                         string list = string.Join(", ", moveNames);
-                        ann.Say($"Your monster {statsForLocal.displayName} knows: {list}. Press grip and shout a move name to attack.");
+                        ann.Say($"Your monster {statsForLocal.displayName} knows: {list}. Just shout a move name to attack.");
                     }
                 }
             }
