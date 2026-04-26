@@ -472,7 +472,7 @@ namespace Tigerverse.UI
             // added. Setting `main.duration` after that throws "Setting the
             // duration while system is still playing is not supported." Stop
             // and clear before reconfiguring.
-            ps.Stop(true, ParticleSystemStopAction.None);
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
             var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
             if (sh == null) sh = Shader.Find("Sprites/Default");
