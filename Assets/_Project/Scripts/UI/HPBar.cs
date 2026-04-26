@@ -14,9 +14,12 @@ namespace Tigerverse.UI
         [SerializeField] private TMP_Text labelText;
         [SerializeField] private Camera billboardCamera;
         [SerializeField] private float billboardOffsetY = 1.6f;
+        [Tooltip("Padding (canvas units) reserved between the panel border and the fill on each side. Used to compute the available fill width.")]
+        [SerializeField] private float fillPadding = 8f;
 
         private int targetCurrent;
         private int targetMax = 1;
+        private float _currentWidth = -1f;
 
         public void SetHP(int current, int max)
         {
@@ -52,8 +55,20 @@ namespace Tigerverse.UI
 
             if (fillImage != null)
             {
-                float desired = (float)targetCurrent / Mathf.Max(1, targetMax);
-                fillImage.fillAmount = Mathf.Lerp(fillImage.fillAmount, desired, Time.deltaTime * 8f);
+                // Drive the visible bar by animating the Fill rect's width
+                // (left-anchored) instead of Image.fillAmount. With a sliced
+                // rounded sprite, this keeps the rounded RIGHT edge intact as
+                // the bar drains — a hard square right edge would otherwise
+                // appear once the fill drops below ~95%.
+                var fillRT = fillImage.rectTransform;
+                var parentRT = (RectTransform)fillRT.parent;
+                float innerWidth = Mathf.Max(0f, parentRT.rect.width - fillPadding * 2f);
+                float desiredWidth = innerWidth * Mathf.Clamp01((float)targetCurrent / Mathf.Max(1, targetMax));
+                if (_currentWidth < 0f) _currentWidth = desiredWidth;
+                _currentWidth = Mathf.Lerp(_currentWidth, desiredWidth, Time.deltaTime * 8f);
+                var sd = fillRT.sizeDelta;
+                sd.x = _currentWidth;
+                fillRT.sizeDelta = sd;
             }
         }
 

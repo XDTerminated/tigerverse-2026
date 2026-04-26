@@ -17,6 +17,13 @@ namespace Tigerverse.UI
         [SerializeField] private GameStateManager gsm;
         [SerializeField] private TMP_Text statusLabel; // optional, shows "Hosting code: ABCD" or "Joining ABCD..."
 
+        // Pastel red for validation errors — soft enough to read as "warning"
+        // not "fatal", matches the doodle/comic palette better than #DC2626.
+        // (Tailwind red-400.)
+        private static readonly Color ErrorColor = new Color(0xF8 / 255f, 0x71 / 255f, 0x71 / 255f, 1f);
+        // Default subdued black for non-error status messages.
+        private static readonly Color StatusColor = new Color(0f, 0f, 0f, 0.6f);
+
         private void Awake()
         {
             if (gsm == null)
@@ -46,18 +53,25 @@ namespace Tigerverse.UI
             if (string.IsNullOrEmpty(code) || code.Length < 4)
             {
                 Debug.LogWarning($"[JoinController] Code too short: '{raw}'");
-                if (statusLabel != null) statusLabel.text = "Type a 4-letter code";
+                SetStatus("Type a 4-letter code!", isError: true);
                 return;
             }
 
-            if (statusLabel != null) statusLabel.text = $"Joining {code}...";
+            SetStatus($"Joining {code}...", isError: false);
             gsm.JoinByCode(code);
         }
 
         // Called externally by HostController when StartHosting fires, to display the code.
         public void ShowHostCode(string code)
         {
-            if (statusLabel != null) statusLabel.text = $"Code: {code}";
+            SetStatus($"Code: {code}", isError: false);
+        }
+
+        private void SetStatus(string text, bool isError)
+        {
+            if (statusLabel == null) return;
+            statusLabel.text = text;
+            statusLabel.color = isError ? ErrorColor : StatusColor;
         }
     }
 }

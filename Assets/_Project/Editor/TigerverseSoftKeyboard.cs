@@ -31,12 +31,24 @@ namespace Tigerverse.EditorTools
             var oldKb = GameObject.Find("SoftKeyboard");
             if (oldKb != null) Object.DestroyImmediate(oldKb);
 
+            // 8 cols x (4 letter rows + 1 action row). Same gap/key sizes as
+            // the live layout so re-running the scaffold matches what's on
+            // screen instead of resetting it to the old cramped grid.
+            int cols = 8;
+            int letterRows = 4;
+            float keyW = 60f, keyH = 56f, gap = 6f;
+            int totalRows = letterRows + 1;
+            float rowStride = keyH + gap;
+            float colStride = keyW + gap;
+            float kbWidth  = cols * keyW + (cols - 1) * gap;
+            float kbHeight = totalRows * keyH + (totalRows - 1) * gap;
+
             // Container.
             var kbGo = new GameObject("SoftKeyboard", typeof(RectTransform), typeof(SoftKeyboard));
             kbGo.transform.SetParent(canvas.transform, false);
             var kbRT = kbGo.GetComponent<RectTransform>();
-            kbRT.sizeDelta = new Vector2(560, 320);
-            kbRT.anchoredPosition = new Vector2(0, -180); // below the input field
+            kbRT.sizeDelta = new Vector2(kbWidth + 12, kbHeight + 12);
+            kbRT.anchoredPosition = new Vector2(0, -210); // below the input column
             var kb = kbGo.GetComponent<SoftKeyboard>();
             var inputField = input.GetComponent<TMP_InputField>();
             kb.SetTarget(inputField);
@@ -45,12 +57,8 @@ namespace Tigerverse.EditorTools
             kbSo.FindProperty("maxLength").intValue = 4;
             kbSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 8 cols x 4 rows = 32 letter keys (matches Alphabet length).
-            int cols = 8;
-            float keyW = 62, keyH = 56;
-            float gap = 4;
-            float startX = -(cols * (keyW + gap)) / 2f + (keyW + gap) / 2f;
-            float startY = (4 * (keyH + gap)) / 2f - (keyH + gap) / 2f;
+            float startX = -((cols - 1) * colStride) * 0.5f;
+            float startY =  ((totalRows - 1) * rowStride) * 0.5f;
 
             for (int i = 0; i < Alphabet.Length; i++)
             {
@@ -60,38 +68,37 @@ namespace Tigerverse.EditorTools
                 var key = MakeKey(kbGo.transform, ch, ch);
                 var rt = key.GetComponent<RectTransform>();
                 rt.sizeDelta = new Vector2(keyW, keyH);
-                rt.anchoredPosition = new Vector2(startX + col * (keyW + gap),
-                                                  startY - row * (keyH + gap));
+                rt.anchoredPosition = new Vector2(startX + col * colStride,
+                                                  startY - row * rowStride);
                 var keyComp = key.AddComponent<SoftKeyboardKey>();
                 keyComp.character = ch;
                 keyComp.keyboard = kb;
                 keyComp.action = SoftKeyboardKey.KeyAction.Append;
             }
 
-            // Backspace + clear, in a row below the alphabet.
-            float bottomRowY = startY - 4 * (keyH + gap) - keyH * 0.5f;
-
-            var back = MakeKey(kbGo.transform, "Backspace", "BACKSPACE");
-            var backRT = back.GetComponent<RectTransform>();
-            backRT.sizeDelta = new Vector2(keyW * 4 + gap * 3, keyH);
-            backRT.anchoredPosition = new Vector2(startX + (cols * 0.75f) * (keyW + gap) - keyW,
-                                                  bottomRowY);
-            var backKey = back.AddComponent<SoftKeyboardKey>();
-            backKey.keyboard = kb;
-            backKey.action = SoftKeyboardKey.KeyAction.Backspace;
-            back.GetComponent<Image>().color = new Color(0.6f, 0.2f, 0.2f, 0.9f);
-            back.GetComponentInChildren<TextMeshProUGUI>().fontSize = 28;
+            // Action row sits as the 5th grid row, one row-stride below the
+            // last letter row, so it visually belongs to the keyboard panel.
+            float halfW = 4 * keyW + 3 * gap;
+            float halfCenterX = 2 * colStride; // center of cols 4-7 in the 8-col grid
+            float bottomRowY = startY - letterRows * rowStride;
 
             var clear = MakeKey(kbGo.transform, "Clear", "CLEAR");
             var clearRT = clear.GetComponent<RectTransform>();
-            clearRT.sizeDelta = new Vector2(keyW * 4 + gap * 3, keyH);
-            clearRT.anchoredPosition = new Vector2(startX + (cols * 0.25f) * (keyW + gap) - keyW,
-                                                   bottomRowY);
+            clearRT.sizeDelta = new Vector2(halfW, keyH);
+            clearRT.anchoredPosition = new Vector2(-halfCenterX, bottomRowY);
             var clearKey = clear.AddComponent<SoftKeyboardKey>();
             clearKey.keyboard = kb;
             clearKey.action = SoftKeyboardKey.KeyAction.Clear;
-            clear.GetComponent<Image>().color = new Color(0.4f, 0.4f, 0.4f, 0.9f);
-            clear.GetComponentInChildren<TextMeshProUGUI>().fontSize = 28;
+            clear.GetComponentInChildren<TextMeshProUGUI>().fontSize = 24;
+
+            var back = MakeKey(kbGo.transform, "Backspace", "BACKSPACE");
+            var backRT = back.GetComponent<RectTransform>();
+            backRT.sizeDelta = new Vector2(halfW, keyH);
+            backRT.anchoredPosition = new Vector2(halfCenterX, bottomRowY);
+            var backKey = back.AddComponent<SoftKeyboardKey>();
+            backKey.keyboard = kb;
+            backKey.action = SoftKeyboardKey.KeyAction.Backspace;
+            back.GetComponentInChildren<TextMeshProUGUI>().fontSize = 24;
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -105,7 +112,23 @@ namespace Tigerverse.EditorTools
                 typeof(Image),
                 typeof(Button));
             go.transform.SetParent(parent, false);
-            go.GetComponent<Image>().color = new Color(0.15f, 0.4f, 0.7f, 0.9f);
+
+            // Theme-fidelity: outline white panel, themed b&w button colors,
+            // hover-flip helper so the label inverts in step with the panel.
+            var img = go.GetComponent<Image>();
+            var panel = AssetDatabase.LoadAssetAtPath<Sprite>(TigerverseTheme.PanelSpritePath);
+            if (panel != null) { img.sprite = panel; img.type = Image.Type.Sliced; }
+            img.color = TigerverseTheme.White;
+
+            var btn = go.GetComponent<Button>();
+            var colors = btn.colors;
+            colors.normalColor = TigerverseTheme.White;
+            colors.highlightedColor = TigerverseTheme.Black;
+            colors.pressedColor = TigerverseTheme.Black;
+            colors.selectedColor = TigerverseTheme.Black;
+            colors.colorMultiplier = 1f;
+            btn.colors = colors;
+            go.AddComponent<TigerverseHoverFlip>();
 
             var lblGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
             lblGo.transform.SetParent(go.transform, false);
@@ -114,9 +137,11 @@ namespace Tigerverse.EditorTools
             lblRt.offsetMin = Vector2.zero; lblRt.offsetMax = Vector2.zero;
             var tmp = lblGo.GetComponent<TextMeshProUGUI>();
             tmp.text = label;
-            tmp.fontSize = 36;
+            tmp.fontSize = 28;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.white;
+            tmp.color = TigerverseTheme.Black;
+            var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TigerverseTheme.FontAssetPath);
+            if (font != null) tmp.font = font;
             return go;
         }
     }

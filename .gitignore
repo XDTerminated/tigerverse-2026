@@ -110,5 +110,12 @@ InitTestScene*.unity*
 # Stays on disk; git stops tracking after `git rm --cached <path>` once.
 /Assets/_Project/Resources/BackendConfig.asset
 
+# Tigerverse — debug screenshots dropped by manage_camera and the in-editor
+# capture button. Useful while iterating, churn-y in git.
+/Assets/Screenshots/
+/Assets/Screenshots.meta
+
 # Environment
 .env
+
+.claude

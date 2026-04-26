@@ -32,8 +32,10 @@ namespace Tigerverse.EditorTools
                 return;
             }
 
-            var hpA = BuildHpBar(pivotA.transform, "HPBarA", new Color(0.3f, 0.7f, 1f));
-            var hpB = BuildHpBar(pivotB.transform, "HPBarB", new Color(1f, 0.4f, 0.6f));
+            // Brand palette: red for player A, blue for player B — same accent
+            // colors the website uses on the brush swatches.
+            var hpA = BuildHpBar(pivotA.transform, "HPBarA", TigerverseTheme.BrushRed);
+            var hpB = BuildHpBar(pivotB.transform, "HPBarB", TigerverseTheme.BrushBlue);
 
             var cardA = BuildRevealCard(pivotA.transform, "RevealCardA");
             var cardB = BuildRevealCard(pivotB.transform, "RevealCardB");
@@ -80,7 +82,16 @@ namespace Tigerverse.EditorTools
             var bgRT = bg.GetComponent<RectTransform>();
             bgRT.anchorMin = Vector2.zero; bgRT.anchorMax = Vector2.one;
             bgRT.offsetMin = Vector2.zero; bgRT.offsetMax = Vector2.zero;
-            bg.GetComponent<Image>().color = new Color(0, 0, 0, 0.55f);
+            // White panel with the themed black border — matches the website's
+            // bordered "card" look. The colored Fill in front shows progress.
+            var bgImg = bg.GetComponent<Image>();
+            bgImg.color = TigerverseTheme.White;
+            var panelSprite = AssetDatabase.LoadAssetAtPath<Sprite>(TigerverseTheme.PanelSpritePath);
+            if (panelSprite != null)
+            {
+                bgImg.sprite = panelSprite;
+                bgImg.type = Image.Type.Sliced;
+            }
 
             // Fill.
             var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
@@ -104,9 +115,8 @@ namespace Tigerverse.EditorTools
             tmp.text = "100/100";
             tmp.fontSize = 36;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.white;
-            tmp.outlineColor = Color.black;
-            tmp.outlineWidth = 0.2f;
+            tmp.color = TigerverseTheme.Black;
+            ApplyThemeFont(tmp);
 
             // Wire HPBar component.
             var bar = canvasGo.GetComponent<HPBar>();
@@ -142,7 +152,16 @@ namespace Tigerverse.EditorTools
             var bgRT = bg.GetComponent<RectTransform>();
             bgRT.anchorMin = Vector2.zero; bgRT.anchorMax = Vector2.one;
             bgRT.offsetMin = Vector2.zero; bgRT.offsetMax = Vector2.zero;
-            bg.GetComponent<Image>().color = new Color(0, 0, 0, 0.85f);
+            // Reveal card uses the website's white "modal" panel with a thick
+            // black border so it reads as a doodle-style card.
+            var bgImg = bg.GetComponent<Image>();
+            bgImg.color = TigerverseTheme.White;
+            var panelSprite = AssetDatabase.LoadAssetAtPath<Sprite>(TigerverseTheme.PanelSpritePath);
+            if (panelSprite != null)
+            {
+                bgImg.sprite = panelSprite;
+                bgImg.type = Image.Type.Sliced;
+            }
 
             var nameTmp = MakeTextChild(canvasGo.transform, "Name", "Name", 64, new Vector2(0, 130));
             var elemTmp = MakeTextChild(canvasGo.transform, "Element", "ELEMENT", 36, new Vector2(0, 60));
@@ -180,8 +199,15 @@ namespace Tigerverse.EditorTools
             t.text = text;
             t.fontSize = fontSize;
             t.alignment = TextAlignmentOptions.Center;
-            t.color = Color.white;
+            t.color = TigerverseTheme.Black;
+            ApplyThemeFont(t);
             return t;
+        }
+
+        private static void ApplyThemeFont(TMP_Text tmp)
+        {
+            var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TigerverseTheme.FontAssetPath);
+            if (font != null) tmp.font = font;
         }
     }
 }
