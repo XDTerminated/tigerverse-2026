@@ -8,7 +8,7 @@ namespace Tigerverse.Combat
 {
     /// <summary>
     /// Shows a floating "stats card" above the monster while the local
-    /// player's hand or pointer is hovering near it. Read-only — players
+    /// player's hand or pointer is hovering near it. Read-only, players
     /// can't edit stats. Used during the post-hatch inspection phase so
     /// players can examine what their scribble can do before battle.
     /// </summary>
@@ -21,7 +21,7 @@ namespace Tigerverse.Combat
         [SerializeField] private float cardHeight = 0.85f;
         [Tooltip("Optional override; if null we look up the local stats via SessionApiClient.")]
         [SerializeField] private MonsterStatsData stats;
-        [Tooltip("Slot index — used to fetch this monster's stats from the live session (0=p1, 1=p2).")]
+        [Tooltip("Slot index, used to fetch this monster's stats from the live session (0=p1, 1=p2).")]
         [SerializeField] public int slotIndex = 0;
 
         private GameObject _card;
@@ -79,7 +79,7 @@ namespace Tigerverse.Combat
                 FindControllers();
             }
 
-            // Strict controller-hover only — no camera-proximity fallback,
+            // Strict controller-hover only, no camera-proximity fallback,
             // so players know it's their hand that triggered the card and
             // not just walking past the monster.
             bool leftIn  = _leftCtrl  != null && Vector3.Distance(_leftCtrl.position,  transform.position) < hoverRadius;
@@ -148,11 +148,11 @@ namespace Tigerverse.Combat
                 if (_cry == null) _cry = GetComponentInChildren<MonsterCry>(true);
                 if (_cry == null)
                 {
-                    Debug.LogWarning($"[MonsterHoverStats] '{name}' — no MonsterCry component found, cry SKIPPED.");
+                    Debug.LogWarning($"[MonsterHoverStats] '{name}', no MonsterCry component found, cry SKIPPED.");
                 }
                 else
                 {
-                    Debug.Log($"[MonsterHoverStats] Cry-press via {node} on '{_cry.gameObject.name}' — calling PlaySpawn().");
+                    Debug.Log($"[MonsterHoverStats] Cry-press via {node} on '{_cry.gameObject.name}', calling PlaySpawn().");
                     _cry.PlaySpawn();
                 }
                 if (dev.TryGetHapticCapabilities(out var caps) && caps.supportsImpulse)

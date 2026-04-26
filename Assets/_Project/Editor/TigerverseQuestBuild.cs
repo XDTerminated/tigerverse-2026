@@ -29,7 +29,7 @@ namespace Tigerverse.EditorTools
                 return;
             }
 
-            // 0) Don't even try to build mid-compile — Unity will reject it
+            // 0) Don't even try to build mid-compile, Unity will reject it
             // with "scripts are compiling" and the build pipeline won't
             // recover cleanly. Force a finish + wait, then continue.
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
@@ -116,11 +116,11 @@ namespace Tigerverse.EditorTools
             // ARM64 only.
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
 
-            // Android 10 (API 29) min — Quest 3 / Pro need it; older Quest 2 OS works too.
+            // Android 10 (API 29) min, Quest 3 / Pro need it; older Quest 2 OS works too.
             PlayerSettings.Android.minSdkVersion    = AndroidSdkVersions.AndroidApiLevel29;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
 
-            // Landscape orientation — Quest is always landscape internally.
+            // Landscape orientation, Quest is always landscape internally.
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
 
             // Allow internet (Photon Fusion + Vercel API + ElevenLabs/Groq).

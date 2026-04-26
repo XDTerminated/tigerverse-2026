@@ -5,7 +5,7 @@ namespace Tigerverse.UI
 {
     /// <summary>
     /// Procedural paper-craft "Professor" NPC. Built entirely out of
-    /// primitives at runtime — head sphere, body cylinder, arms, hat —
+    /// primitives at runtime, head sphere, body cylinder, arms, hat,
     /// shaded paper-white. Includes a subtle idle bob and a SpeakingPulse()
     /// animation hook the tutorial calls per spoken line so the figure
     /// gestures while talking.
@@ -57,7 +57,7 @@ namespace Tigerverse.UI
             _baseHeadLocal = _head.localPosition;
             _baseHeadRot   = _head.localRotation;
 
-            // Wizard hat — cone-ish (use a cylinder with a tapered scale to fake a cone).
+            // Wizard hat, cone-ish (use a cylinder with a tapered scale to fake a cone).
             _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.04f, 0), localScale: new Vector3(0.18f, 0.20f, 0.18f));
             _hat.SetParent(_head, worldPositionStays: true);
 
@@ -65,13 +65,11 @@ namespace Tigerverse.UI
             var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 0.95f, 0), localScale: new Vector3(0.30f, 0.012f, 0.30f));
             brim.SetParent(_head, worldPositionStays: true);
 
-            // Eyes — small dark spheres on the front of the head.
-            MakePrim(PrimitiveType.Sphere, darkMat, "EyeL", localPos: new Vector3(-0.08f, 0.86f, -0.13f), localScale: new Vector3(0.04f, 0.045f, 0.04f), parent: _head);
-            MakePrim(PrimitiveType.Sphere, darkMat, "EyeR", localPos: new Vector3( 0.08f, 0.86f, -0.13f), localScale: new Vector3(0.04f, 0.045f, 0.04f), parent: _head);
-            // Mouth bar.
-            MakePrim(PrimitiveType.Cube,   mouthMat,"Mouth",  localPos: new Vector3(0f,    0.78f, -0.155f), localScale: new Vector3(0.10f, 0.012f, 0.01f), parent: _head);
+            // Face: hand-drawn doodle face on a quad pinned to the front of
+            // the head sphere. Replaces the old eye + mouth primitives.
+            BuildFaceQuad(_head);
 
-            // Arms — two thin elongated cubes with rotation pivots near the shoulder.
+            // Arms, two thin elongated cubes with rotation pivots near the shoulder.
             _leftArm  = MakeArm(name: "ArmL", paperMat, shoulder: new Vector3(-0.20f, 0.62f, 0f), tilt: 18f);
             _rightArm = MakeArm(name: "ArmR", paperMat, shoulder: new Vector3( 0.20f, 0.62f, 0f), tilt: -18f);
             _baseLeftArmRot  = _leftArm.localRotation;
@@ -137,6 +135,53 @@ namespace Tigerverse.UI
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
             else mat.color = c;
             return mat;
+        }
+
+        // Doodle face used on the head sphere. Loaded once and shared.
+        private static Material _faceMat;
+        private static void BuildFaceQuad(Transform head)
+        {
+            if (head == null) return;
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "Face";
+            var col = quad.GetComponent<Collider>();
+            if (col != null) { if (Application.isPlaying) Destroy(col); else DestroyImmediate(col); }
+            quad.transform.SetParent(head, worldPositionStays: false);
+            // Sphere has unit radius before scale, so -0.51f sits just in front
+            // of the front face. Quad lies flat in XY pointing +Z so it's
+            // already facing outward from the head's local front.
+            quad.transform.localPosition = new Vector3(0f, 0.05f, -0.51f);
+            quad.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            // Footprint matches the old eye+mouth extent (~0.10 wide × ~0.13
+            // tall in head-local units). Flip X via negative scale because
+            // the quad is now rotated 180 on Y.
+            quad.transform.localScale = new Vector3(0.42f, 0.5f, 1f);
+            quad.GetComponent<Renderer>().sharedMaterial = MakeFaceMaterial();
+        }
+
+        private static Material MakeFaceMaterial()
+        {
+            if (_faceMat != null) return _faceMat;
+            var sh = Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) sh = Shader.Find("Unlit/Transparent");
+            _faceMat = new Material(sh);
+            var face = Resources.Load<Texture2D>("face");
+            if (face != null)
+            {
+                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
+                if (_faceMat.HasProperty("_MainTex")) _faceMat.SetTexture("_MainTex", face);
+            }
+            if (_faceMat.HasProperty("_BaseColor")) _faceMat.SetColor("_BaseColor", Color.white);
+            // Switch URP/Unlit to transparent surface so the face's alpha
+            // shows the head sphere through the empty space.
+            if (_faceMat.HasProperty("_Surface")) _faceMat.SetFloat("_Surface", 1f);   // 0 opaque, 1 transparent
+            if (_faceMat.HasProperty("_Blend")) _faceMat.SetFloat("_Blend", 0f);       // 0 alpha
+            if (_faceMat.HasProperty("_SrcBlend")) _faceMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (_faceMat.HasProperty("_DstBlend")) _faceMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (_faceMat.HasProperty("_ZWrite")) _faceMat.SetFloat("_ZWrite", 0f);
+            _faceMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            _faceMat.renderQueue = 3000;
+            return _faceMat;
         }
 
         private static Texture2D[] _allPaper;
@@ -375,7 +420,7 @@ namespace Tigerverse.UI
                 if (rends[i] != null) rends[i].enabled = false;
             }
 
-            // Don't Destroy ourselves — caller does that.
+            // Don't Destroy ourselves, caller does that.
         }
 
         /// <summary>
@@ -406,13 +451,13 @@ namespace Tigerverse.UI
         }
 
         /// <summary>
-        /// Procedural one-shot particle puff — small white cubes spraying
+        /// Procedural one-shot particle puff, small white cubes spraying
         /// outward. Pattern matches ProfessorTutorial.SpawnLightningEffect.
         /// </summary>
         private void SpawnConfettiPuff(Vector3 worldPos, Color tint)
         {
             var go = new GameObject("PaperConfettiFx");
-            // Detach from this transform — we may be destroyed soon, and the
+            // Detach from this transform, we may be destroyed soon, and the
             // FX should outlive us long enough to play out.
             go.transform.position = worldPos;
 
@@ -426,7 +471,7 @@ namespace Tigerverse.UI
             else mat.color = tint;
             psr.sharedMaterial = mat;
 
-            // Use the default billboard render mode — small white squares look
+            // Use the default billboard render mode, small white squares look
             // like paper confetti without needing a custom mesh.
             psr.renderMode = ParticleSystemRenderMode.Billboard;
 

@@ -16,7 +16,7 @@ namespace Tigerverse.Combat
     ///      remote PlayerAvatar's right hand).
     ///
     /// The READY button is kept as a dev/editor bypass that fires both
-    /// flags at once — useful for solo testing where there's no opponent
+    /// flags at once, useful for solo testing where there's no opponent
     /// hand to bump.
     /// </summary>
     [DisallowMultipleComponent]
@@ -33,7 +33,7 @@ namespace Tigerverse.Combat
 
         public event Action OnLocalReady;
 
-        private TutorialStartButton _button;       // reused — same paper-craft pressable
+        private TutorialStartButton _button;       // reused, same paper-craft pressable
         private TextMeshPro _statusLabel;
         private VoiceCommandRouter  _voice;
         private Transform _localRightHand;
@@ -172,7 +172,7 @@ namespace Tigerverse.Combat
             {
                 _voiceConfirmed = false;
                 UpdateStatusLabel();
-                Debug.Log("[ReadyHandshake] Voice ✓ expired — say 'ready' again.");
+                Debug.Log("[ReadyHandshake] Voice ✓ expired, say 'ready' again.");
             }
 
             // Real-time bump: ✓ only while hands are physically together.
@@ -237,7 +237,7 @@ namespace Tigerverse.Combat
 
             if (_bumpConfirmed != prevBump) UpdateStatusLabel();
 
-            // (Periodic diag log removed — it was hammering the console in VR.)
+            // (Periodic diag log removed, it was hammering the console in VR.)
 
             // Both ✓ at the same instant → fire.
             if (_voiceConfirmed && _bumpConfirmed) Fire(bestSrc ?? "simultaneous");
@@ -265,9 +265,9 @@ namespace Tigerverse.Combat
         {
             if (_fired) return;
             _fired = true;
-            Debug.Log($"[ReadyHandshake] Local player READY via {sourceLabel} — posting to SessionManager and waiting for opponent.");
+            Debug.Log($"[ReadyHandshake] Local player READY via {sourceLabel}, posting to SessionManager and waiting for opponent.");
 
-            // Tear down the local UI / mic immediately — we're done.
+            // Tear down the local UI / mic immediately, we're done.
             if (_voice != null)
             {
                 _voice.OnTranscript.RemoveListener(HandleVoice);
@@ -297,7 +297,7 @@ namespace Tigerverse.Combat
 
             if (!hasOpponent)
             {
-                Debug.Log("[ReadyHandshake] No opponent detected (solo / debug test) — skipping both-ready gate.");
+                Debug.Log("[ReadyHandshake] No opponent detected (solo / debug test), skipping both-ready gate.");
             }
             else
             {
@@ -313,15 +313,15 @@ namespace Tigerverse.Combat
                     yield return null;
                 }
                 if (sm == null || !sm.ReadyP1 || !sm.ReadyP2)
-                    Debug.LogWarning("[ReadyHandshake] Timed out waiting for opponent ready — advancing solo.");
+                    Debug.LogWarning("[ReadyHandshake] Timed out waiting for opponent ready, advancing solo.");
                 else
-                    Debug.Log("[ReadyHandshake] Both players READY — advancing into MR + battle.");
+                    Debug.Log("[ReadyHandshake] Both players READY, advancing into MR + battle.");
             }
 #else
             yield return null;
 #endif
 
-            // MR transition removed — battle now starts directly in the
+            // MR transition removed, battle now starts directly in the
             // VR lobby, same as the original pre-MR behaviour. The bump
             // midpoint capture above is still useful for the synced
             // lockstep gate (SessionManager.BumpAnchor), and the
@@ -333,7 +333,7 @@ namespace Tigerverse.Combat
 #if FUSION2
         private static bool HasMultiplePlayersInRunner()
         {
-            // Find any active NetworkRunner — if it's running and has
+            // Find any active NetworkRunner, if it's running and has
             // more than one player, we have a real opponent to wait for.
             var runners = FindObjectsByType<Fusion.NetworkRunner>(FindObjectsSortMode.None);
             foreach (var r in runners)

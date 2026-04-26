@@ -56,7 +56,7 @@ namespace Tigerverse.EditorTools
             GUILayout.Label("Fetch a GLB and apply the white-paper + ink-outline shader.", EditorStyles.boldLabel);
             EditorGUILayout.Space();
 
-            EditorGUILayout.LabelField("Option A — paste an UploadThing GLB URL:");
+            EditorGUILayout.LabelField("Option A, paste an UploadThing GLB URL:");
             url = EditorGUILayout.TextField("GLB URL", url);
 
             EditorGUI.BeginDisabledGroup(busy || string.IsNullOrWhiteSpace(url));
@@ -68,7 +68,7 @@ namespace Tigerverse.EditorTools
             EditorGUI.EndDisabledGroup();
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Option B — pull from your live session by code:");
+            EditorGUILayout.LabelField("Option B, pull from your live session by code:");
             EditorGUILayout.HelpBox($"Hits {SessionApiBase}CODE and downloads the first non-null glbUrl.", MessageType.None);
             sessionCode = EditorGUILayout.TextField("Session Code", sessionCode);
 
@@ -123,7 +123,7 @@ namespace Tigerverse.EditorTools
 
             if (string.IsNullOrEmpty(glb))
             {
-                owner.SetStatus("No glbUrl in session — did either player submit a drawing yet?");
+                owner.SetStatus("No glbUrl in session, did either player submit a drawing yet?");
                 owner.busy = false; yield break;
             }
 
@@ -215,7 +215,7 @@ namespace Tigerverse.EditorTools
             owner.busy = false;
         }
 
-        // Simple non-regex JSON field extractor — matches "key":"value" on first occurrence.
+        // Simple non-regex JSON field extractor, matches "key":"value" on first occurrence.
         private static string ExtractFirstField(string json, string key)
         {
             string needle = "\"" + key + "\":\"";

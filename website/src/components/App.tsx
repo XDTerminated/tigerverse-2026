@@ -119,7 +119,7 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
         }
       }
 
-      // Empty canvas — nothing to show.
+      // Empty canvas, nothing to show.
       if (maxX < 0 || maxY < 0) {
         setTransparentDataUri(null);
         return;
@@ -302,9 +302,9 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
     <>
       {phase.kind === 'drawing' && (
         <div className="fixed inset-0 flex flex-row bg-white text-black">
-          {/* Left sidebar — same thickness as the bottom bar (80px) */}
+          {/* Left sidebar, same thickness as the bottom bar (80px) */}
           <div className="shrink-0 w-20 flex flex-col items-center gap-3 py-4 border-r-2 border-black">
-            {/* Colors container — fixed height (4 swatches × 44px + 3 gaps × 12px = 212)
+            {/* Colors container, fixed height (4 swatches × 44px + 3 gaps × 12px = 212)
                 so the rest of the sidebar doesn't shift when colors slide away. */}
             <div className="relative" style={{ width: 44, height: 212 }}>
               {COLORS.map((c, i) => (
@@ -371,7 +371,7 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
                   aria-label="Brush size"
                 />
               </div>
-              {/* Tick numbers — anchored just to the right of the slider wrapper
+              {/* Tick numbers, anchored just to the right of the slider wrapper
                   (slider wrapper is 32px wide, sits at left:0.75rem, so ticks
                   start at left:0.75rem + 32px + 4px gap). Heights match
                   exactly so the calc resolves to the same pixel positions as
@@ -470,9 +470,9 @@ export default function App({ sessionCode, playerSlot }: AppProps = {}) {
                   style={{ width: `${phase.progress}%` }}
                 />
               </div>
-              <div className="text-sm opacity-60">this usually takes 1–3 minutes</div>
+              <div className="text-sm opacity-60">this usually takes 1,3 minutes</div>
 
-              {/* Voice customization — selected traits get joined and sent to
+              {/* Voice customization, selected traits get joined and sent to
                   /api/voice, which feeds them to ElevenLabs to shape the cry
                   the Quest plays when the creature spawns. Optional; if
                   skipped, the auto-derived cry from /api/generate stays. */}

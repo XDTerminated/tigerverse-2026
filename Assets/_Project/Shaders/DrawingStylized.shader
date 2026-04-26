@@ -3,7 +3,7 @@
 // Linework: inverted-hull black outline pass + pencil cross-hatching in
 // shadow/rim areas + a faint front projection of the actual drawing.
 //
-// No drawing-color tint — every monster reads as a hand-sketched white
+// No drawing-color tint, every monster reads as a hand-sketched white
 // paper figure regardless of what colors the player drew.
 
 Shader "Tigerverse/DrawingStylized"
@@ -203,7 +203,7 @@ Shader "Tigerverse/DrawingStylized"
             {
                 float3 nWS    = normalize(IN.normalWS);
                 // GLBs from Meshy can come in with flipped winding or inverted
-                // vertex normals — without this, lighting gives ndl=0 every-
+                // vertex normals, without this, lighting gives ndl=0 every-
                 // where and the pencil hatch maxes out, painting the model
                 // solid black. Flip the normal for back-facing fragments so
                 // both sides shade correctly.
@@ -222,7 +222,7 @@ Shader "Tigerverse/DrawingStylized"
                 //    in by DrawingColorize at hatch time). Object-space
                 //    projection broke whenever the GLB had nested
                 //    transforms, because IN.positionOS is the LEAF mesh's
-                //    local space, not the model root's space — Meshy
+                //    local space, not the model root's space, Meshy
                 //    output is always nested, so the drawing was previously
                 //    landing on a tiny corner of the body.
                 float2 uv = saturate((IN.positionWS.xy - _BBoxMin.xy) / max(_BBoxSize.xy, 1e-4));
@@ -233,7 +233,7 @@ Shader "Tigerverse/DrawingStylized"
                 float  faceWeight = pow(saturate(abs(dot(nWS, float3(0,0,1)))), 1.5);
                 baseCol = lerp(baseCol, baseCol * drawingSample, _DrawingHint * faceWeight);
 
-                // 4) Cross-hatch pencil where shadow + rim build up — heavier than before
+                // 4) Cross-hatch pencil where shadow + rim build up, heavier than before
                 //    so the white body still has visible hand-drawn shading.
                 Light mainLight = GetMainLight();
                 float ndlRaw = dot(nPaper, mainLight.direction);   // -1..1 signed
@@ -274,8 +274,8 @@ Shader "Tigerverse/DrawingStylized"
                 half4 lit = UniversalFragmentPBR(inputData, surf);
 
                 // Wrap-around fill: PBR shadows half the sphere by default
-                // (everywhere ndl <= 0). Pull the SIDES of the sphere — the
-                // band between the terminator and ~120° back — up toward
+                // (everywhere ndl <= 0). Pull the SIDES of the sphere, the
+                // band between the terminator and ~120° back, up toward
                 // the unshaded albedo, so visible shadow only covers the
                 // back quarter. The very back stays dark via PBR.
                 float wrapLift = saturate(ndlRaw + 0.7) - ndl;  // >0 only on the sides

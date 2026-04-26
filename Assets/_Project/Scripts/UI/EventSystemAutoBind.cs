@@ -10,7 +10,7 @@ namespace Tigerverse.UI
     /// Repairs the EventSystem's UI input wiring at runtime so mouse/keyboard
     /// works for laptop play-mode testing AND XR controller pointer events still
     /// work in headset. The scene-serialized XRUIInputModule references an
-    /// InputActionAsset that went missing during a recent overhaul — without a
+    /// InputActionAsset that went missing during a recent overhaul, without a
     /// fix every UI button is dead. The "Tigerverse → UI → Wire EventSystem
     /// Input Actions" menu item rewires it for the editor only; this runtime
     /// path makes play mode just work without depending on that menu being run.
@@ -37,7 +37,7 @@ namespace Tigerverse.UI
             if (es == null) return;
 
             // If an XRUIInputModule is already present and enabled, leave the
-            // EventSystem alone — XRI's NearFarInteractor talks to that
+            // EventSystem alone, XRI's NearFarInteractor talks to that
             // module directly, and swapping in InputSystemUIInputModule
             // breaks every VR controller UI click. The original "XR module
             // is broken" assumption only applied right after a teammate's
@@ -49,7 +49,7 @@ namespace Tigerverse.UI
             if (module == null) module = es.gameObject.AddComponent<InputSystemUIInputModule>();
 
             // If we've already bound on a previous scene load, the existing
-            // module is already wired — just leave it.
+            // module is already wired, just leave it.
             if (module.point != null && module.leftClick != null) return;
 
             BuildAndBind(module);

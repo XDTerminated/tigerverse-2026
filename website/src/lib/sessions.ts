@@ -2,7 +2,7 @@
 // when KV_REST_API_URL + KV_REST_API_TOKEN are set, otherwise falls back to
 // an in-memory Map for local dev. Vercel runs each API route as a separate
 // serverless function with isolated memory, so the in-memory fallback only
-// works when running `astro dev` locally — production must have the Redis
+// works when running `astro dev` locally, production must have the Redis
 // envs configured.
 
 export type PlayerStatus =
@@ -71,7 +71,7 @@ function emptySlot(): PlayerSlot {
 
 const SESSION_KEY = (code: string) => `tigerverse:session:${code.toUpperCase()}`;
 const TASKMAP_KEY = 'tigerverse:taskMap';
-const SESSION_TTL_SECONDS = 60 * 60 * 6; // 6h — sessions auto-expire
+const SESSION_TTL_SECONDS = 60 * 60 * 6; // 6h, sessions auto-expire
 
 export async function getSession(code: string): Promise<Session> {
   const upper = code.toUpperCase();

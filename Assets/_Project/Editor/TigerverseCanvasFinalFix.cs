@@ -36,9 +36,9 @@ namespace Tigerverse.EditorTools
             // so localRotation is identity (the canvas's +Z then points the same way as camera, i.e. away from us).
             // To make the FRONT face the camera, rotate 180° on Y. We also bump z to 0.6 so it's well within the near clip.
             canvasGo.transform.SetParent(origin.Camera.transform, worldPositionStays: false);
-            canvasGo.transform.localPosition = new Vector3(0, 0, 1.4f);   // 1.4m forward — comfortable arm's length
+            canvasGo.transform.localPosition = new Vector3(0, 0, 1.4f);   // 1.4m forward, comfortable arm's length
             canvasGo.transform.localRotation = Quaternion.identity;
-            canvasGo.transform.localScale = Vector3.one * 0.002f;         // ~1.4m wide canvas — fits FoV at 1.4m
+            canvasGo.transform.localScale = Vector3.one * 0.002f;         // ~1.4m wide canvas, fits FoV at 1.4m
 
             // Make the canvas tall enough to hold buttons + input + keyboard.
             var rt = canvasGo.GetComponent<RectTransform>();

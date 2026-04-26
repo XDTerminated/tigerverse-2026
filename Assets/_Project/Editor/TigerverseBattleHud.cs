@@ -28,14 +28,16 @@ namespace Tigerverse.EditorTools
             var pivotB = GameObject.Find("MonsterSpawnPivotB");
             if (pivotA == null || pivotB == null)
             {
-                Debug.LogError("[Tigerverse] Spawn pivots missing — run 'Battle → Enable Mock + Wire Spawn Pivots' first.");
+                Debug.LogError("[Tigerverse] Spawn pivots missing, run 'Battle → Enable Mock + Wire Spawn Pivots' first.");
                 return;
             }
 
-            // Brand palette: red for player A, blue for player B — same accent
-            // colors the website uses on the brush swatches.
-            var hpA = BuildHpBar(pivotA.transform, "HPBarA", TigerverseTheme.BrushRed);
-            var hpB = BuildHpBar(pivotB.transform, "HPBarB", TigerverseTheme.BrushBlue);
+            // Health-state coloring: both bars start green (healthy).
+            // HPBar.cs swaps to red once currentHP/maxHP drops to the
+            // lowHpThreshold (default 25%).
+            var healthyGreen = new Color(0x22 / 255f, 0xC5 / 255f, 0x5E / 255f, 1f);
+            var hpA = BuildHpBar(pivotA.transform, "HPBarA", healthyGreen);
+            var hpB = BuildHpBar(pivotB.transform, "HPBarB", healthyGreen);
 
             var cardA = BuildRevealCard(pivotA.transform, "RevealCardA");
             var cardB = BuildRevealCard(pivotB.transform, "RevealCardB");
@@ -82,7 +84,7 @@ namespace Tigerverse.EditorTools
             var bgRT = bg.GetComponent<RectTransform>();
             bgRT.anchorMin = Vector2.zero; bgRT.anchorMax = Vector2.one;
             bgRT.offsetMin = Vector2.zero; bgRT.offsetMax = Vector2.zero;
-            // White panel with the themed black border — matches the website's
+            // White panel with the themed black border, matches the website's
             // bordered "card" look. The colored Fill in front shows progress.
             var bgImg = bg.GetComponent<Image>();
             bgImg.color = TigerverseTheme.White;

@@ -46,7 +46,7 @@ namespace Tigerverse.Net
 
             if (HasInputAuthority)
             {
-                // We own this avatar — find local rig sources to drive it from.
+                // We own this avatar, find local rig sources to drive it from.
                 var origin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
                 if (origin != null)
                 {

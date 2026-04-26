@@ -7,7 +7,7 @@ namespace Tigerverse.Combat
     /// players so neither has a numerical edge from random drawing-color
     /// stat assignment. Element + moves + flavor text are kept per-player
     /// so each scribble still feels distinct in personality. Players don't
-    /// see the original raw values — only the balanced ones.
+    /// see the original raw values, only the balanced ones.
     /// </summary>
     public static class StatsBalancer
     {

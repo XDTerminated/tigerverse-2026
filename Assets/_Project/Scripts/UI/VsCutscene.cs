@@ -29,9 +29,9 @@ namespace Tigerverse.UI
         [SerializeField] private float overshootDist  = 0.10f;
         [SerializeField] private float hardTimeoutSec = 8f;
 
-        private static readonly Color LeftColor     = new Color(0.95f, 0.84f, 0.62f);
-        private static readonly Color RightColor    = new Color(0.78f, 0.72f, 0.58f);
-        private static readonly Color VsLetterColor = new Color(0.55f, 0.18f, 0.10f);
+        private static readonly Color LeftColor     = Color.white;
+        private static readonly Color RightColor    = Color.white;
+        private static readonly Color VsLetterColor = Color.black;
 
         public IEnumerator Play(GameObject monsterA, string nameA,
                                 GameObject monsterB, string nameB,
@@ -44,7 +44,7 @@ namespace Tigerverse.UI
             StartCoroutine(RunInner(monsterA, nameA, monsterB, nameB, () => finished = true));
 
             while (!finished && Time.time - startedAt < hardTimeoutSec) yield return null;
-            if (!finished) Debug.LogWarning("[VsCutscene] HARD TIMEOUT — forcing completion.");
+            if (!finished) Debug.LogWarning("[VsCutscene] HARD TIMEOUT, forcing completion.");
 
             try { onComplete?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
             Destroy(gameObject);
@@ -57,7 +57,7 @@ namespace Tigerverse.UI
             var cam = Camera.main;
             if (cam == null)
             {
-                Debug.LogWarning("[VsCutscene] No Camera.main — bailing.");
+                Debug.LogWarning("[VsCutscene] No Camera.main, bailing.");
                 onInnerDone?.Invoke();
                 yield break;
             }
@@ -88,9 +88,9 @@ namespace Tigerverse.UI
             vsTmp.fontStyle = FontStyles.Bold;
             vsTmp.alignment = TextAlignmentOptions.Center;
             vsTmp.color = VsLetterColor;
-            vsTmp.outlineColor = new Color32(255, 250, 240, 255);
-            vsTmp.outlineWidth = 0.36f;
+            vsTmp.outlineWidth = 0f;
             vsTmp.enableWordWrapping = false;
+            ApplyThemeFont(vsTmp);
             vsTmp.rectTransform.sizeDelta = new Vector2(1.6f, 1.0f);
             vsGo.transform.localScale = Vector3.zero;
 
@@ -162,7 +162,7 @@ namespace Tigerverse.UI
         // Walks the monster hierarchy and rebuilds JUST the MeshRenderers
         // (and SkinnedMeshRenderers, baked to a static pose). No scripts,
         // no audio, no network, no colliders. Cannot interfere with game
-        // state — it's a dumb mesh display.
+        // state, it's a dumb mesh display.
         private GameObject BuildVisualClone(GameObject src, Transform parent, Vector3 localPos, float yawDeg)
         {
             if (src == null) return null;
@@ -263,11 +263,19 @@ namespace Tigerverse.UI
             tmp.fontSize = 1.2f;
             tmp.fontStyle = FontStyles.Bold;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.white;
-            tmp.outlineColor = new Color32(20, 20, 20, 255);
-            tmp.outlineWidth = 0.32f;
+            tmp.color = Color.black;
+            tmp.outlineWidth = 0f;
             tmp.enableWordWrapping = false;
             tmp.rectTransform.sizeDelta = new Vector2(cardWidth * 0.45f, 0.40f);
+            ApplyThemeFont(tmp);
+        }
+
+        private static void ApplyThemeFont(TMPro.TMP_Text tmp)
+        {
+#if UNITY_EDITOR
+            var font = UnityEditor.AssetDatabase.LoadAssetAtPath<TMPro.TMP_FontAsset>("Assets/_Project/Fonts/sophiecomic SDF.asset");
+            if (font != null) tmp.font = font;
+#endif
         }
 
         private static void DestroyIfExists(Component c)

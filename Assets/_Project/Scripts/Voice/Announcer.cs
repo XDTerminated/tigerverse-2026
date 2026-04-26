@@ -13,7 +13,7 @@ namespace Tigerverse.Voice
     public class Announcer : MonoBehaviour
     {
         [SerializeField] private BackendConfig config;
-        [SerializeField] private string defaultVoiceId = "21m00Tcm4TlvDq8ikWAM"; // ElevenLabs "Rachel" — works for any free key
+        [SerializeField] private string defaultVoiceId = "21m00Tcm4TlvDq8ikWAM"; // ElevenLabs "Rachel", works for any free key
         [SerializeField] private string modelId = "eleven_turbo_v2_5";
 
         private AudioSource _audio;
@@ -34,7 +34,7 @@ namespace Tigerverse.Voice
         {
             if (config == null || string.IsNullOrEmpty(config.elevenLabsApiKey))
             {
-                Debug.LogWarning("[Announcer] elevenLabsApiKey not set — skipping TTS.");
+                Debug.LogWarning("[Announcer] elevenLabsApiKey not set, skipping TTS.");
                 yield break;
             }
 

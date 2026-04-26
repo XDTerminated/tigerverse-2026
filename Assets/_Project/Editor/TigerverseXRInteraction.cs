@@ -88,7 +88,7 @@ namespace Tigerverse.EditorTools
             go.transform.SetParent(parent, false);
 
             var driver = go.AddComponent<TrackedPoseDriver>();
-            // Configure the action references manually inside the inspector if you want — defaults work for OpenXR Touch.
+            // Configure the action references manually inside the inspector if you want, defaults work for OpenXR Touch.
 
             var ray = go.AddComponent<NearFarInteractor>();
             // NearFarInteractor is the XRI 3.x replacement for XRRayInteractor on hand controllers.

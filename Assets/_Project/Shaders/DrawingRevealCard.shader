@@ -75,7 +75,7 @@ Shader "Tigerverse/DrawingRevealCard"
                 half3 paperTile = SAMPLE_TEXTURE2D(_PaperTex, sampler_PaperTex, IN.uv * _PaperTexScale).rgb;
                 half3 paper     = _PaperColor.rgb * lerp(half3(1,1,1), paperTile * 1.6, 0.7);
 
-                // How "ink-y" is this pixel — dark pixels have high inkAmount.
+                // How "ink-y" is this pixel, dark pixels have high inkAmount.
                 half lum       = dot(drawing, half3(0.299, 0.587, 0.114));
                 half inkAmount = saturate((1.0 - lum) * _InkContrast);
 
@@ -88,7 +88,7 @@ Shader "Tigerverse/DrawingRevealCard"
                 half3 inkColor = drawing * _InkColor.rgb;
                 half3 col      = lerp(paper, inkColor, visibleAmount * inkAmount);
 
-                // Pen-tip glow band at the leading edge — only while still drawing.
+                // Pen-tip glow band at the leading edge, only while still drawing.
                 half  edgeProx = 1.0 - saturate(abs(IN.uv.y - wipeEdge) / max(_EdgeWidth, 1e-4));
                 half  edgeGlow = pow(edgeProx, 2.0) * step(0.001, _RevealAmount) * step(_RevealAmount, 0.999);
                 col += edgeGlow * _PenColor.rgb * 0.85;

@@ -16,14 +16,14 @@ namespace Tigerverse.MR
     ///
     ///   LEFT MENU BUTTON (hold ~1.5s)
     ///     Spawns the real ReadyHandshake. Now do exactly what you'd do
-    ///     in a real match — say READY out loud and fist-bump (your own
+    ///     in a real match, say READY out loud and fist-bump (your own
     ///     hands count as a self-bump too), OR press the I'M READY
     ///     button. The same Fire() path the production game uses then
     ///     loads BattleMR + transitions to passthrough, and the test
     ///     scribbles you spawned with X follow you into the MR arena.
     ///
     /// Auto-spawns at app start (RuntimeInitializeOnLoadMethod) and
-    /// survives scene loads via DontDestroyOnLoad — always listening.
+    /// survives scene loads via DontDestroyOnLoad, always listening.
     /// </summary>
     [DisallowMultipleComponent]
     public class DebugMRJump : MonoBehaviour
@@ -44,7 +44,7 @@ namespace Tigerverse.MR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoSpawn()
         {
-            // Idempotent — only spawn once across scene loads.
+            // Idempotent, only spawn once across scene loads.
             if (FindFirstObjectByType<DebugMRJump>() != null) return;
             var go = new GameObject("DebugMRJump");
             DontDestroyOnLoad(go);
@@ -134,7 +134,7 @@ namespace Tigerverse.MR
             Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
 
             // Place them ~1.2 m forward of the player, ±0.5 m to the
-            // sides, on the floor (Y=0 — DummyMonster lifts itself by
+            // sides, on the floor (Y=0, DummyMonster lifts itself by
             // +0.45 m to its capsule centre).
             Vector3 posA = new Vector3(head.x, 0f, head.z) + fwd * 1.2f - right * 0.5f;
             Vector3 posB = new Vector3(head.x, 0f, head.z) + fwd * 1.2f + right * 0.5f;
@@ -142,13 +142,13 @@ namespace Tigerverse.MR
             EnsurePivotWithDummyMonster("MonsterSpawnPivotA", posA, new Color(0.95f, 0.45f, 0.35f), facing: head);
             EnsurePivotWithDummyMonster("MonsterSpawnPivotB", posB, new Color(0.40f, 0.65f, 1.00f), facing: head);
 
-            Debug.Log("[DebugMRJump] Spawned 2 test scribbles in VR (red on left, blue on right). Look around — they should be standing on the floor in front of you. Hold LEFT MENU 1.5s to start the bump → MR transition; the scribbles will follow into MR.");
+            Debug.Log("[DebugMRJump] Spawned 2 test scribbles in VR (red on left, blue on right). Look around, they should be standing on the floor in front of you. Hold LEFT MENU 1.5s to start the bump → MR transition; the scribbles will follow into MR.");
         }
 
         private void SpawnHandshakeForTest()
         {
             // Place the I'M READY button about 0.55 m in front of the
-            // player at chest height — same offset the live game uses
+            // player at chest height, same offset the live game uses
             // post-hatch in GameStateManager.RunInspectionPhase.
             var cam = Camera.main;
             Vector3 fwd = cam != null ? cam.transform.forward : Vector3.forward;
@@ -169,7 +169,7 @@ namespace Tigerverse.MR
             var existing = FindFirstObjectByType<ReadyHandshake>();
             if (existing != null)
             {
-                Debug.Log("[DebugMRJump] ReadyHandshake already in scene — leaving it alone.");
+                Debug.Log("[DebugMRJump] ReadyHandshake already in scene, leaving it alone.");
                 return;
             }
 
@@ -181,7 +181,7 @@ namespace Tigerverse.MR
             // Reminder if the user forgot to spawn the test scribbles.
             var anyDummy = FindFirstObjectByType<DebugDummyMonster>();
             if (anyDummy == null)
-                Debug.Log("[DebugMRJump] No test scribbles in scene — tap LEFT X first if you want to verify the VR → MR carry-over.");
+                Debug.Log("[DebugMRJump] No test scribbles in scene, tap LEFT X first if you want to verify the VR → MR carry-over.");
             else
                 Debug.Log("[DebugMRJump] Spawned ReadyHandshake. Say READY + fist bump (self-bump your own hands counts), or press I'M READY. The test scribbles will follow into MR.");
         }
@@ -194,7 +194,7 @@ namespace Tigerverse.MR
             var existingPivot = GameObject.Find(pivotName);
             if (existingPivot != null && existingPivot.GetComponentInChildren<DebugDummyMonster>() != null)
             {
-                // Already set up — leave the live pivot alone.
+                // Already set up, leave the live pivot alone.
                 return;
             }
 

@@ -16,7 +16,7 @@ namespace Tigerverse.EditorTools
     ///
     /// What it does:
     ///   1. Imports sophiecomic.ttf as a TMP SDF font asset (skips if it exists).
-    ///   2. Generates two 9-sliced sprites — a 2px-bordered outline panel and a
+    ///   2. Generates two 9-sliced sprites, a 2px-bordered outline panel and a
     ///      filled black panel, both with the website's rounded-sm corners.
     ///   3. Walks every scene + every prefab under Assets/_Project, replacing:
     ///        - TMP fonts with Sophiecomic SDF
@@ -46,7 +46,7 @@ namespace Tigerverse.EditorTools
                 return;
             }
 
-            // If the SDF asset already exists, delete it and rebuild — older
+            // If the SDF asset already exists, delete it and rebuild, older
             // runs created the asset without saving its atlas texture as a
             // sub-asset, which leaves runtime text invisible.
             var existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TigerverseTheme.FontAssetPath);
@@ -120,7 +120,7 @@ namespace Tigerverse.EditorTools
             var filledSprite = AssetDatabase.LoadAssetAtPath<Sprite>(TigerverseTheme.FilledSpritePath);
             if (font == null || outlineSprite == null || filledSprite == null)
             {
-                Debug.LogError("[Restyle] Missing font or sprite assets — aborting.");
+                Debug.LogError("[Restyle] Missing font or sprite assets, aborting.");
                 return;
             }
 
@@ -298,7 +298,7 @@ namespace Tigerverse.EditorTools
             if (n.Contains("bg") || n.Contains("background") || n.Contains("panel")
                 || n.Contains("card") || n.Contains("frame") || n.Contains("box"))
                 return true;
-            // Also accept small leaf images (no children) with an alpha — likely
+            // Also accept small leaf images (no children) with an alpha, likely
             // chrome rather than a hero artwork.
             return image.transform.childCount == 0;
         }

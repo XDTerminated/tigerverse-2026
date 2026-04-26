@@ -59,23 +59,23 @@ namespace Tigerverse.Net
             string code = _runner.SessionInfo != null ? _runner.SessionInfo.Name : null;
             if (ready)
             {
-                label.text = $"Players: {n}/{requiredPlayers} — Ready! Look around — you should see your partner.";
+                label.text = $"Players: {n}/{requiredPlayers}, Ready! Look around, you should see your partner.";
             }
             else if (!string.IsNullOrEmpty(code))
             {
-                label.text = $"Room <b>{code}</b> — waiting for opponent… ({n}/{requiredPlayers})";
+                label.text = $"Room <b>{code}</b>, waiting for opponent… ({n}/{requiredPlayers})";
             }
             else
             {
-                label.text = $"Players: {n}/{requiredPlayers} — waiting…";
+                label.text = $"Players: {n}/{requiredPlayers}, waiting…";
             }
 
             if (ready && !_shrunk)
             {
                 _shrunk = true;
-                // Once both players are in, kill the entire join menu — the
+                // Once both players are in, kill the entire join menu, the
                 // status label, the canvas itself, anything still on the
-                // TitleCanvas — so nothing floats in the player's view
+                // TitleCanvas, so nothing floats in the player's view
                 // while combat / hatching begins.
                 var canvas = GetComponent<Canvas>();
                 if (canvas != null) canvas.gameObject.SetActive(false);

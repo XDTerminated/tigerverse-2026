@@ -25,7 +25,7 @@ namespace Tigerverse.EditorTools
         [MenuItem("Tigerverse/Test -> Spawn Shader Test Sphere (yellow drawing)")]
         public static void SpawnSphereYellow() => Spawn(PrimitiveType.Sphere, MakeBlobDrawing(new Color(1f, 0.92f, 0.2f)), "TestSphere_Yellow");
 
-        // Hardcoded sample GLB URL — known-good Meshy output the user
+        // Hardcoded sample GLB URL, known-good Meshy output the user
         // already produced. Used by the dev menu to skip the drawing flow.
         private const string SampleGlbUrl = "https://ueggfh303j.ufs.sh/f/hqoaI3f7pqQl6koHkKXdhzSPI8ykOc45FrwKeWNpJfbAYMB6";
 
@@ -34,7 +34,7 @@ namespace Tigerverse.EditorTools
         {
             if (!Application.isPlaying)
             {
-                Debug.LogError("[Tigerverse/Dev] Press Play first — the GLB importer (glTFast) only works in play mode.");
+                Debug.LogError("[Tigerverse/Dev] Press Play first, the GLB importer (glTFast) only works in play mode.");
                 return;
             }
 
@@ -45,7 +45,7 @@ namespace Tigerverse.EditorTools
                 return;
             }
 
-            // Spawn parent — prefer MonsterSpawnPivotA, fall back to in-front-of-camera.
+            // Spawn parent, prefer MonsterSpawnPivotA, fall back to in-front-of-camera.
             Transform parent = null;
             var pivotA = GameObject.Find("MonsterSpawnPivotA");
             if (pivotA != null) parent = pivotA.transform;
@@ -108,7 +108,7 @@ namespace Tigerverse.EditorTools
             handshake.Configure(btnPos, btnRot);
             handshake.OnLocalReady += () =>
             {
-                Debug.Log("[Tigerverse/Dev] READY handshake fired — playing VS cutscene.");
+                Debug.Log("[Tigerverse/Dev] READY handshake fired, playing VS cutscene.");
                 Object.Destroy(hsGo);
 
                 // Find the freshly-spawned monster on the pivot to use as
@@ -130,7 +130,7 @@ namespace Tigerverse.EditorTools
                     monster, "Player 2",
                     () =>
                     {
-                        Debug.Log("[Tigerverse/Dev] VS cutscene complete — locking locomotion for dev battle.");
+                        Debug.Log("[Tigerverse/Dev] VS cutscene complete, locking locomotion for dev battle.");
                         LockLocomotionForDev();
                     }));
             };
@@ -138,7 +138,7 @@ namespace Tigerverse.EditorTools
 
         // Mirrors GameStateManager.SetupBattleLocomotionAndHud's locomotion
         // lock so the dev-menu path lands the trainer in the same parked
-        // state the real battle does. No HUD spawned here — there's no
+        // state the real battle does. No HUD spawned here, there's no
         // BattleManager wired up in the dev path, so the moves panel would
         // be empty anyway.
         private static void LockLocomotionForDev()
@@ -173,7 +173,7 @@ namespace Tigerverse.EditorTools
         {
             if (!Application.isPlaying)
             {
-                Debug.LogWarning("[AudioDiag] Not in Play mode — AudioListener state may differ. Press Play and re-run for accurate state.");
+                Debug.LogWarning("[AudioDiag] Not in Play mode, AudioListener state may differ. Press Play and re-run for accurate state.");
             }
 
             Debug.Log($"[AudioDiag] AudioListener.volume = {AudioListener.volume}    (1.0 = full, 0 = silent)");
@@ -198,12 +198,12 @@ namespace Tigerverse.EditorTools
             // Force-correct any global mute state and re-test.
             if (AudioListener.volume < 0.99f)
             {
-                Debug.LogWarning($"[AudioDiag] AudioListener.volume was {AudioListener.volume} — forcing to 1.0");
+                Debug.LogWarning($"[AudioDiag] AudioListener.volume was {AudioListener.volume}, forcing to 1.0");
                 AudioListener.volume = 1f;
             }
             if (AudioListener.pause)
             {
-                Debug.LogWarning("[AudioDiag] AudioListener.pause was TRUE — forcing to false");
+                Debug.LogWarning("[AudioDiag] AudioListener.pause was TRUE, forcing to false");
                 AudioListener.pause = false;
             }
         }
@@ -229,7 +229,7 @@ namespace Tigerverse.EditorTools
         {
             if (!Application.isPlaying) { Debug.LogError("[Tigerverse/Dev] Press Play first."); return; }
             // Synth a 0.5s 440Hz square wave so we test the audio pipeline
-            // with NO network involvement — pure Unity → speakers.
+            // with NO network involvement, pure Unity → speakers.
             int sr = 44100;
             int samples = sr / 2;
             var clip = AudioClip.Create("BeepTest", samples, 1, sr, false);
@@ -297,7 +297,7 @@ namespace Tigerverse.EditorTools
             var router = Object.FindFirstObjectByType<Tigerverse.Voice.VoiceCommandRouter>();
             if (router == null) { Debug.LogWarning("[Tigerverse/Dev] No VoiceCommandRouter in scene."); return; }
             router.SetPreferredMicSubstring("");
-            Debug.Log("[Tigerverse/Dev] preferredMicSubstring cleared — using system default mic (typically laptop).");
+            Debug.Log("[Tigerverse/Dev] preferredMicSubstring cleared, using system default mic (typically laptop).");
         }
 
         [MenuItem("Tigerverse/Dev -> Use Quest/Oculus Mic (preferredMicSubstring = 'Oculus')")]
@@ -330,7 +330,7 @@ namespace Tigerverse.EditorTools
         {
             if (!Application.isPlaying)
             {
-                Debug.LogError("[Tigerverse/Dev] Press Play first — TTS + voice routing only work in play mode.");
+                Debug.LogError("[Tigerverse/Dev] Press Play first, TTS + voice routing only work in play mode.");
                 return;
             }
 
@@ -342,7 +342,7 @@ namespace Tigerverse.EditorTools
             pivot.transform.position = spawnPos;
             pivot.AddComponent<Tigerverse.UI.ProfessorTutorial>();
             Selection.activeObject = pivot;
-            Debug.Log("[Tigerverse/Dev] Tutorial pivot spawned. Listen for Professor Hooten — he'll talk through the script then enter Q&A. Press right grip (or Spacebar) to ask a question.");
+            Debug.Log("[Tigerverse/Dev] Tutorial pivot spawned. Listen for Professor Hooten, he'll talk through the script then enter Q&A. Press right grip (or Spacebar) to ask a question.");
         }
 
         [MenuItem("Tigerverse/Dev -> Spawn Tutorial + Egg (full sim)")]
@@ -423,7 +423,7 @@ namespace Tigerverse.EditorTools
             egg.SetName("Devving Dev");
             egg.SetDisplayProgress(0f);
 
-            // Pop-in only fires reliably during play — schedule it via the
+            // Pop-in only fires reliably during play, schedule it via the
             // editor coroutine pump if we're in edit mode.
             if (Application.isPlaying)
                 egg.StartCoroutine(egg.PlayPopInAnimation());
@@ -479,7 +479,7 @@ namespace Tigerverse.EditorTools
             }
         }
 
-        // Hatch runner needs a real coroutine — only works in play mode.
+        // Hatch runner needs a real coroutine, only works in play mode.
         private class EggHatchRunner : MonoBehaviour
         {
             public void Begin(Tigerverse.UI.HatchingEggSequence egg, GameObject monster)
@@ -515,7 +515,7 @@ namespace Tigerverse.EditorTools
         }
 
         // Finds every monster GameObject in the scene by looking for things
-        // tagged with MonsterCry or ProceduralPunchAttacker — both are
+        // tagged with MonsterCry or ProceduralPunchAttacker, both are
         // uniquely added when a fetched GLB monster is spawned. This catches
         // monsters wherever they live in the hierarchy (e.g. nested under
         // MonsterSpawnPivot/TabletAnchor/...). Also includes obvious
@@ -605,7 +605,7 @@ namespace Tigerverse.EditorTools
             go.name = name;
             go.transform.position = spawnPos;
             go.transform.localScale = Vector3.one * 0.6f;
-            // Drop the collider — not needed for visual testing.
+            // Drop the collider, not needed for visual testing.
             Object.DestroyImmediate(go.GetComponent<Collider>());
 
             DrawingColorize.Apply(go, drawing, drawingStrength: 0.22f);
@@ -614,7 +614,7 @@ namespace Tigerverse.EditorTools
             Debug.Log($"[Tigerverse] Spawned '{name}' at {spawnPos} with paper-craft material. Pick another color from the Tigerverse → Test menu, or play with the material's properties live.");
         }
 
-        // Cheap procedural "drawing" — a soft-edged blob of the chosen ink color
+        // Cheap procedural "drawing", a soft-edged blob of the chosen ink color
         // on a white background. Looks plausible to the dominant-color sampler.
         private static Texture2D MakeBlobDrawing(Color ink)
         {

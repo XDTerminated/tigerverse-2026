@@ -56,7 +56,7 @@ namespace Tigerverse.UI
 
         private void BuildVisual()
         {
-            // Backing — flat paper-craft card.
+            // Backing, flat paper-craft card.
             _backing = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _backing.name = "BtnBacking";
             _backing.transform.SetParent(transform, false);
@@ -70,7 +70,7 @@ namespace Tigerverse.UI
             else mat.color = _backingBaseColor;
             _backingMat = mat;
             _backing.GetComponent<Renderer>().sharedMaterial = mat;
-            // Keep BoxCollider — needed for mouse raycast and acts as visual reference for poke.
+            // Keep BoxCollider, needed for mouse raycast and acts as visual reference for poke.
 
             // Soft shadow plate behind the button to give it depth.
             _shadow = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -134,7 +134,7 @@ namespace Tigerverse.UI
             _phase += Time.deltaTime;
 
             // VR controller poke.
-            // Throttle the find to 2 Hz — the rig walk is ~149 transforms
+            // Throttle the find to 2 Hz, the rig walk is ~149 transforms
             // and was firing every frame when controllers hadn't loaded
             // yet, killing framerate on Quest.
             if ((_leftCtrl == null || _rightCtrl == null) && Time.unscaledTime - _lastFindAt > 0.5f)
@@ -143,7 +143,7 @@ namespace Tigerverse.UI
                 FindControllers();
             }
 
-            // Hover state — checked separately at a wider radius so the
+            // Hover state, checked separately at a wider radius so the
             // player gets clear visual + haptic feedback before they're
             // close enough to actually press.
             bool nowHover = false;

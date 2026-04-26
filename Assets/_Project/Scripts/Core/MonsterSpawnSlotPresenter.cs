@@ -47,7 +47,7 @@ namespace Tigerverse.Core
         // Tracks whether SpawnEgg() has run for this slot. Without this,
         // once the hatch sequence destroys the egg GameObject, _egg goes
         // back to Unity's null sentinel and the spawn check below fires
-        // again — creating a fresh egg on top of the just-revealed
+        // again, creating a fresh egg on top of the just-revealed
         // monster, then again, forever.
         private bool   _eggSpawned;
 
@@ -60,7 +60,7 @@ namespace Tigerverse.Core
         private void Update()
         {
             // Each player only sees their own egg. If this presenter's slot
-            // doesn't belong to the local caster, do nothing — no egg, no
+            // doesn't belong to the local caster, do nothing, no egg, no
             // tutorial button, no progress visuals. The opponent's draw +
             // hatch progress is invisible until the actual monster spawns
             // in SpawnFlow.
@@ -82,7 +82,7 @@ namespace Tigerverse.Core
             if (data == null) return;
 
             // Player has started producing: status past 'queued', OR an image
-            // URL is available, OR a name has been chosen — any signal that
+            // URL is available, OR a name has been chosen, any signal that
             // they hit submit on the website.
             bool started = !string.IsNullOrEmpty(data.imageUrl)
                           || !string.IsNullOrEmpty(data.name)
@@ -108,14 +108,14 @@ namespace Tigerverse.Core
                 if (string.IsNullOrEmpty(data.glbUrl)) t = Mathf.Min(t, 0.95f);
                 _egg.SetDisplayProgress(t);
 
-                // Crack progress is held at 0 during the wait — cracks only
+                // Crack progress is held at 0 during the wait, cracks only
                 // appear when the GLB is actually ready and ModelFetcher
                 // takes over for the burst. This way the egg looks intact
                 // and idle while we wait, then dramatically cracks open.
                 _egg.progress01 = 0f;
             }
 
-            // Hand off to the hatch sequence — only when BOTH players' GLBs
+            // Hand off to the hatch sequence, only when BOTH players' GLBs
             // are ready. The tutorial is meant to keep the local player
             // entertained while waiting for the OTHER player too, so we
             // don't dismiss the Professor just because our own monster
@@ -142,7 +142,7 @@ namespace Tigerverse.Core
             // Emergency shutdown: if our local egg has already hatched (the
             // hatch sequence destroys the egg and reveals the monster), the
             // Professor must go away immediately, even if the opponent's GLB
-            // hasn't arrived yet — otherwise he'd float next to the live monster.
+            // hasn't arrived yet, otherwise he'd float next to the live monster.
             if (_egg != null && _egg.IsHatched && _tutorial != null)
             {
                 _tutorial.Stop();
@@ -182,7 +182,7 @@ namespace Tigerverse.Core
             // Position the button relative to the EGG and the LOCAL CAMERA,
             // not in the pivot's local space. Player 2's pivot can be
             // rotated 180° relative to player 1's, which used to place the
-            // button behind their head — so they couldn't see or press it.
+            // button behind their head, so they couldn't see or press it.
             //
             // Strategy: anchor the button beside the egg in the horizontal
             // plane perpendicular to the camera's forward, on the right

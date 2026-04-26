@@ -20,12 +20,12 @@ namespace Tigerverse.Voice
             var cfg = BackendConfig.Load();
             if (cfg == null || string.IsNullOrEmpty(cfg.elevenLabsApiKey))
             {
-                Debug.LogWarning("[CryGenerator] elevenLabsApiKey not set — skipping cry generation.");
+                Debug.LogWarning("[CryGenerator] elevenLabsApiKey not set, skipping cry generation.");
                 onClip?.Invoke(null);
                 yield break;
             }
 
-            // Strip to a single word — keeps the cry punchy and avoids the
+            // Strip to a single word, keeps the cry punchy and avoids the
             // monster reciting a full sentence. Also fall back to a generic
             // creature-y syllable if the name is empty/garbage.
             string firstWord = "Bweh";

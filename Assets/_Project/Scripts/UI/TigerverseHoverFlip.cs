@@ -54,7 +54,7 @@ namespace Tigerverse.UI
 
         public void OnPointerEnter(PointerEventData e) { _hovered = true; Apply(); }
         public void OnPointerExit(PointerEventData e) { _hovered = false; Apply(); }
-        public void OnPointerDown(PointerEventData e) { _pressed = true; Apply(); }
+        public void OnPointerDown(PointerEventData e) { _pressed = true; UISfx.PlayClick(); Apply(); }
         public void OnPointerUp(PointerEventData e)
         {
             _pressed = false; Apply();
@@ -87,7 +87,7 @@ namespace Tigerverse.UI
             _icons.Clear();
             GetComponentsInChildren(true, _labels);
 
-            // Skip the button's own background Image — Unity's color-tint
+            // Skip the button's own background Image, Unity's color-tint
             // already inverts that one. Anything else (Icon child Images,
             // dividers, badges) is treated as foreground content.
             var ownBg = GetComponent<Image>();

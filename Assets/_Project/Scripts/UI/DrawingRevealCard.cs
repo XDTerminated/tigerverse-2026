@@ -45,7 +45,7 @@ namespace Tigerverse.UI
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
             go.name = "DrawingRevealCard";
-            // No collider — purely visual.
+            // No collider, purely visual.
             var col = go.GetComponent<Collider>();
             if (col != null) Destroy(col);
             go.transform.SetParent(parent, worldPositionStays: false);
@@ -71,7 +71,7 @@ namespace Tigerverse.UI
             }
             if (sh == null)
             {
-                Debug.LogError("[DrawingRevealCard] Even URP/Unlit not found — card will be invisible.");
+                Debug.LogError("[DrawingRevealCard] Even URP/Unlit not found, card will be invisible.");
                 sh = Shader.Find("Hidden/InternalErrorShader");
             }
             _mat = new Material(sh);

@@ -34,14 +34,17 @@ namespace Tigerverse.Net
         [SerializeField] private Color bodyColor   = new Color(0.97f, 0.95f, 0.91f);
         [SerializeField] private Color accentColor = new Color(0.30f, 0.45f, 0.85f);
         [SerializeField] private bool  showHat     = true;
+        [Tooltip("Visible head sphere radius (metres) attached to the synced head transform.")]
+        [SerializeField] private float headRadius  = 0.13f;
 
         public Renderer[] BodyRenderers { get; private set; }
 
-        private Transform _bodyT, _hatT;
+        private Transform _bodyT, _hatT, _headSphereT;
         private Transform _legL, _legR;
         private Transform _armL, _armR;
         private Material  _bodyMat;
         private Material  _accentMat;
+        private static Material _faceMat;
 
         private void Awake()
         {
@@ -87,7 +90,7 @@ namespace Tigerverse.Net
 
             // Hat sits on top of the head (head transform is synced separately,
             // we attach the hat as a child of headSrc so it follows).
-            // Built lazily — parented to the head once headSrc is non-null.
+            // Built lazily, parented to the head once headSrc is non-null.
 
             _legL = MakePrim(PrimitiveType.Cylinder, _bodyMat, "LegL",
                 localPos: new Vector3(-legSeparation, 0f, 0f),
@@ -135,10 +138,65 @@ namespace Tigerverse.Net
             _hatT = hat.transform;
         }
 
+        // Builds the visible head: a paper-white sphere centered on the synced
+        // head transform, plus a doodle face quad pinned to its front so other
+        // players can see the avatar's "face". Idempotent like EnsureHat.
+        private void EnsureHead()
+        {
+            if (_headSphereT != null || headSrc == null) return;
+
+            // Sphere body — share the body material so paper texture matches.
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "Head";
+            var sCol = sphere.GetComponent<Collider>(); if (sCol != null) Destroy(sCol);
+            sphere.transform.SetParent(headSrc, false);
+            sphere.transform.localPosition = Vector3.zero;
+            sphere.transform.localScale = Vector3.one * (headRadius * 2f);
+            sphere.GetComponent<Renderer>().sharedMaterial = _bodyMat;
+            _headSphereT = sphere.transform;
+
+            // Face quad on the sphere's front. The sphere's local -Z is the
+            // forward direction in head-local space.
+            var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            face.name = "Face";
+            var fCol = face.GetComponent<Collider>(); if (fCol != null) Destroy(fCol);
+            face.transform.SetParent(sphere.transform, false);
+            face.transform.localPosition = new Vector3(0f, 0.05f, -0.51f);
+            face.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            face.transform.localScale = new Vector3(0.42f, 0.5f, 1f);
+            face.GetComponent<Renderer>().sharedMaterial = MakeFaceMaterial();
+        }
+
+        private static Material MakeFaceMaterial()
+        {
+            if (_faceMat != null) return _faceMat;
+            var sh = Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) sh = Shader.Find("Unlit/Transparent");
+            _faceMat = new Material(sh);
+            var face = Resources.Load<Texture2D>("face");
+            if (face != null)
+            {
+                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
+                if (_faceMat.HasProperty("_MainTex")) _faceMat.SetTexture("_MainTex", face);
+            }
+            if (_faceMat.HasProperty("_BaseColor")) _faceMat.SetColor("_BaseColor", Color.white);
+            // URP/Unlit transparent surface so the face's alpha cuts out
+            // correctly against the head sphere underneath.
+            if (_faceMat.HasProperty("_Surface")) _faceMat.SetFloat("_Surface", 1f);
+            if (_faceMat.HasProperty("_Blend")) _faceMat.SetFloat("_Blend", 0f);
+            if (_faceMat.HasProperty("_SrcBlend")) _faceMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (_faceMat.HasProperty("_DstBlend")) _faceMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (_faceMat.HasProperty("_ZWrite")) _faceMat.SetFloat("_ZWrite", 0f);
+            _faceMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            _faceMat.renderQueue = 3000;
+            return _faceMat;
+        }
+
         private void LateUpdate()
         {
             if (headSrc == null) return;
             EnsureHat();
+            EnsureHead();
 
             // Body anchored below the head, looking the same way (yaw only).
             Vector3 bodyPos = headSrc.position + Vector3.down * bodyDropFromHead;
@@ -146,11 +204,11 @@ namespace Tigerverse.Net
             transform.position = bodyPos;
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
-            // Legs hang below body — they don't animate, just bob with body.
+            // Legs hang below body, they don't animate, just bob with body.
             if (_legL != null) _legL.localPosition = new Vector3(-legSeparation, -bodyHeight * 0.5f - legHeight * 0.5f - legDropFromBody * 0f, 0f);
             if (_legR != null) _legR.localPosition = new Vector3( legSeparation, -bodyHeight * 0.5f - legHeight * 0.5f - legDropFromBody * 0f, 0f);
 
-            // Arms — stretch a thin rectangular cube between shoulder and hand.
+            // Arms, stretch a thin rectangular cube between shoulder and hand.
             UpdateArm(_armL, leftShoulderWorld(),  leftHandSrc);
             UpdateArm(_armR, rightShoulderWorld(), rightHandSrc);
         }

@@ -14,7 +14,7 @@ export const GET: APIRoute = async ({ params }) => {
 
   // Map our internal status enum to the strings the Unity client expects.
   // Unity's SessionApiClient.SessionData expects: queued|generating|rigging|cry|ready|error
-  // 'empty' just means nobody's drawn for this slot yet — surface as 'queued'.
+  // 'empty' just means nobody's drawn for this slot yet, surface as 'queued'.
   const mapStatus = (s: string) => (s === 'empty' ? 'queued' : s);
 
   return Response.json({

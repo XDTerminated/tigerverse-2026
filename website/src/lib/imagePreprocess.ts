@@ -61,7 +61,7 @@ export async function applyDepthVignette(
     }
   }
   if (maxX < 0) {
-    // No ink — return unchanged.
+    // No ink, return unchanged.
     return imageDataUri;
   }
 

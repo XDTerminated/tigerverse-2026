@@ -7,7 +7,7 @@ namespace Tigerverse.UI
     /// Filler interaction for the model-load wait window: players can reach
     /// out and "poke" the egg with their VR controllers. Each poke triggers
     /// a wobble pulse, a particle puff, and a haptic buzz on the poking
-    /// hand. Cosmetic only — the egg still hatches when the GLB load
+    /// hand. Cosmetic only, the egg still hatches when the GLB load
     /// completes, not when the player has poked it enough times.
     /// </summary>
     [DisallowMultipleComponent]
