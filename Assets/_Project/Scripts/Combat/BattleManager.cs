@@ -80,21 +80,27 @@ namespace Tigerverse.Combat
             statsA = a;
             statsB = b;
 
-            if (Object != null && Object.HasStateAuthority)
-            {
-                HPa = (a != null) ? a.maxHP : 1;
-                HPb = (b != null) ? b.maxHP : 1;
+            // Always set HP, regardless of network authority. The previous
+            // auth-gated init left HPa/HPb at 0 on non-authority clients,
+            // which made ResolveMove's local-fallback path subtract damage
+            // from a zero starting value (so nothing visibly changed). On
+            // networked sessions the authority's write replicates and the
+            // local write here is harmlessly overwritten next tick. On
+            // non-networked sessions (Object null), this local write is
+            // the ONLY source of HP and persists fine.
+            HPa = (a != null) ? a.maxHP : 1;
+            HPb = (b != null) ? b.maxHP : 1;
 
-                float sa = (a != null) ? a.speed : 0f;
-                float sb = (b != null) ? b.speed : 0f;
-                CurrentTurn = (sa >= sb) ? 0 : 1;
-                Phase = (CurrentTurn == 0) ? BattlePhase.WaitingForP1Move : BattlePhase.WaitingForP2Move;
-                WinnerIndex = -1;
-            }
+            float sa = (a != null) ? a.speed : 0f;
+            float sb = (b != null) ? b.speed : 0f;
+            CurrentTurn = (sa >= sb) ? 0 : 1;
+            Phase = (CurrentTurn == 0) ? BattlePhase.WaitingForP1Move : BattlePhase.WaitingForP2Move;
+            WinnerIndex = -1;
 
             int maxA = (a != null) ? a.maxHP : 1;
             int maxB = (b != null) ? b.maxHP : 1;
             OnHPChanged.Invoke(HPa, maxA, HPb, maxB);
+            Debug.Log($"[Battle] Initialize: HPa={HPa} HPb={HPb} statsA={(a!=null?a.displayName:"NULL")} statsB={(b!=null?b.displayName:"NULL")} hasObject={(Object!=null)} hasAuth={(Object!=null && HasStateAuthority)}");
         }
 
         public void SubmitMove(MoveSO move, int casterIndex)
