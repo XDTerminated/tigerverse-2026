@@ -428,7 +428,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2b7365b139f7aec43b23d26b7a48b5a6, type: 3}
   m_Name: MetaQuestTouchPlusControllerProfile Standalone
   m_EditorClassIdentifier: 
-  m_enabled: 0
+  m_enabled: 1
   nameUi: Meta Quest Touch Plus Controller Profile
   version: 0.0.1
   featureIdInternal: com.unity.openxr.feature.input.metaquestplus
@@ -689,7 +689,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: feeef8d85de8db242bdda70cc7ff5acd, type: 3}
   m_Name: OculusTouchControllerProfile Standalone
   m_EditorClassIdentifier: 
-  m_enabled: 0
+  m_enabled: 1
   nameUi: Oculus Touch Controller Profile
   version: 0.0.1
   featureIdInternal: com.unity.openxr.feature.input.oculustouch
@@ -710,25 +710,25 @@ MonoBehaviour:
   m_Name: Standalone
   m_EditorClassIdentifier: 
   features:
-  - {fileID: -3326090862687443700}
-  - {fileID: -6013195375516750015}
   - {fileID: -4470027405970506128}
-  - {fileID: 7026830174730574381}
-  - {fileID: -3292605767349652091}
-  - {fileID: 2017992242024633891}
-  - {fileID: 3970351608396630031}
-  - {fileID: -3838930938794635709}
-  - {fileID: -501275368545115597}
-  - {fileID: -4558953690298375395}
-  - {fileID: 8311125802428987062}
-  - {fileID: -2023228316867245528}
-  - {fileID: 2047608484579435305}
   - {fileID: -4394294952309375222}
-  - {fileID: -4175165663386993005}
-  - {fileID: -8128411268079393540}
+  - {fileID: -3292605767349652091}
   - {fileID: 3955308822026045173}
-  - {fileID: -2839539847156775616}
+  - {fileID: -4558953690298375395}
+  - {fileID: 7026830174730574381}
+  - {fileID: 2047608484579435305}
   - {fileID: 922889603539870654}
+  - {fileID: -2839539847156775616}
+  - {fileID: -501275368545115597}
+  - {fileID: -4175165663386993005}
+  - {fileID: -2023228316867245528}
+  - {fileID: 2017992242024633891}
+  - {fileID: -6013195375516750015}
+  - {fileID: 3970351608396630031}
+  - {fileID: 8311125802428987062}
+  - {fileID: -3326090862687443700}
+  - {fileID: -8128411268079393540}
+  - {fileID: -3838930938794635709}
   m_renderMode: 1
   m_autoColorSubmissionMode: 1
   m_colorSubmissionModes:
@@ -790,23 +790,23 @@ MonoBehaviour:
   m_Name: Android
   m_EditorClassIdentifier: 
   features:
-  - {fileID: -1398769923732916865}
-  - {fileID: 449993579249325722}
-  - {fileID: 735360832156056961}
-  - {fileID: -7428330887577316380}
   - {fileID: 682804492405600475}
-  - {fileID: 5336096317080232589}
-  - {fileID: -3426875921499021846}
-  - {fileID: 8451515654421099365}
-  - {fileID: -177981486472808494}
-  - {fileID: -9142185144620103529}
-  - {fileID: -4792134177980538022}
-  - {fileID: 1163924000483675060}
-  - {fileID: 1075001928037655319}
   - {fileID: -8441368353427966161}
-  - {fileID: 156880902569433650}
+  - {fileID: -3426875921499021846}
   - {fileID: -4425724595402624174}
+  - {fileID: -4792134177980538022}
+  - {fileID: 5336096317080232589}
   - {fileID: 5431963066103777483}
+  - {fileID: -7428330887577316380}
+  - {fileID: -9142185144620103529}
+  - {fileID: 156880902569433650}
+  - {fileID: 1075001928037655319}
+  - {fileID: 735360832156056961}
+  - {fileID: 449993579249325722}
+  - {fileID: 8451515654421099365}
+  - {fileID: 1163924000483675060}
+  - {fileID: -1398769923732916865}
+  - {fileID: -177981486472808494}
   m_renderMode: 1
   m_autoColorSubmissionMode: 1
   m_colorSubmissionModes:
