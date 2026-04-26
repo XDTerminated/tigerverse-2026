@@ -327,9 +327,14 @@ namespace Tigerverse.Core
 
             yield return new WaitUntil(() => aDone && bDone);
 
-            // Build stat SOs from session data.
-            statsA = data?.p1?.stats != null ? MonsterStatsSO.FromData(data.p1.stats, catalog) : null;
-            statsB = data?.p2?.stats != null ? MonsterStatsSO.FromData(data.p2.stats, catalog) : null;
+            // Build stat SOs from session data. ALWAYS call FromData even if
+            // stats are missing — FromData fills the moveset to 4 with sane
+            // defaults (Fireball/Watergun/Thunderbolt/Iceshard + Dodge) when
+            // the backend hasn't returned a usable kit yet. Without this the
+            // wrist HUD would be empty and voice commands wouldn't match
+            // anything because availableMoves was null.
+            statsA = MonsterStatsSO.FromData(data?.p1?.stats, catalog, data?.p1?.name);
+            statsB = MonsterStatsSO.FromData(data?.p2?.stats, catalog, data?.p2?.name);
 
             // ─── Inspection phase ───────────────────────────────────────
             // Player can walk around their scribble, hover for stats, and
@@ -369,16 +374,9 @@ namespace Tigerverse.Core
 
             Debug.Log($"[GameStateManager] Entering battle. statsA={(statsA!=null?statsA.displayName:"NULL")} statsA.moves.Length={(statsA?.moves?.Length ?? -1)} statsB={(statsB!=null?statsB.displayName:"NULL")} statsB.moves.Length={(statsB?.moves?.Length ?? -1)}");
 
-            // Lock the trainer's locomotion + spawn the head-locked battle
-            // HUD. Idempotent: re-runs cleanly on rematch.
-            SetupBattleLocomotionAndHud();
-
-            // Snap each player behind their own monster so they can see both
-            // creatures in front of them with a clear sightline. Order
-            // matters: locomotion was just disabled, so setting the rig
-            // position now won't be immediately undone by a joystick frame.
-            PositionPlayerBehindMonster();
-
+            // Bind the voice router and initialize the battle BEFORE spawning
+            // the HUD, so the HUD's first Configure call sees real moves
+            // (instead of relying on auto-refresh to catch a later rebind).
             if (battle != null)
             {
                 battle.Initialize(statsA, statsB);
@@ -391,10 +389,20 @@ namespace Tigerverse.Core
                     voiceRouter.Bind(battle, localCasterIndex, statsForLocal != null ? statsForLocal.moves : null);
                     Debug.Log($"[GameStateManager] Battle voice bound. caster={localCasterIndex} statsForLocal={(statsForLocal!=null?statsForLocal.displayName:"NULL")} moves.Length={(statsForLocal?.moves?.Length ?? -1)} firstMove={(statsForLocal?.moves != null && statsForLocal.moves.Length>0 ? statsForLocal.moves[0]?.displayName : "<none>")}");
 
-                    // Open-mic for combat — the player just shouts the move
-                    // name, no grip required. ReadyHandshake / ProfessorTutorial
-                    // OnDestroy paths turn this OFF when they tear down, so we
-                    // re-enable it here every time battle starts.
+                    // Force the mic into a clean listening state for combat.
+                    // Three things can leave the mic borked at battle start:
+                    //   1. ReadyHandshake / ProfessorTutorial OnDestroy paths
+                    //      turn open-mic OFF (push-to-talk only — no good
+                    //      here, we want continuous listening).
+                    //   2. ProfessorTutorial mutes the mic during TTS lines
+                    //      and unmutes after; if the tutorial gets destroyed
+                    //      mid-speak, the unmute never fires and the mic
+                    //      stays gagged forever.
+                    //   3. SubmitMove cooldowns from the practice phase carry
+                    //      over via Bind() but that's already cleared.
+                    // Force-clear all three here so combat always starts with
+                    // a hot mic that listens for move names.
+                    voiceRouter.SetMuted(false);
                     voiceRouter.SetOpenMicMode(true);
 
                     // Announce the local player's moves via TTS so they know what to call out.
@@ -412,6 +420,17 @@ namespace Tigerverse.Core
             {
                 Debug.LogWarning("[GameStateManager] BattleManager missing — battle will not start.");
             }
+
+            // Lock the trainer's locomotion + spawn the head-locked battle
+            // HUD. Now runs AFTER voice bind so the HUD's first Configure
+            // call reads real moves directly. Idempotent on rematch.
+            SetupBattleLocomotionAndHud();
+
+            // Snap each player behind their own monster so they can see both
+            // creatures in front of them with a clear sightline. Order
+            // matters: locomotion was just disabled, so setting the rig
+            // position now won't be immediately undone by a joystick frame.
+            PositionPlayerBehindMonster();
         }
 
         // Show the local player a "READY!" prompt next to their monster.
