@@ -99,6 +99,7 @@ namespace Tigerverse.Combat
 
         public void SubmitMove(MoveSO move, int casterIndex)
         {
+            Debug.Log($"[Battle] SubmitMove '{(move!=null?move.displayName:"<null>")}' caster={casterIndex} catalogIdx={(catalog!=null?catalog.IndexOf(move):-1)} hasObject={(Object!=null)}");
             if (move == null || catalog == null) return;
             int id = catalog.IndexOf(move);
             if (id < 0 || id > byte.MaxValue)
@@ -112,6 +113,7 @@ namespace Tigerverse.Combat
         [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
         private void RPC_RequestMove(byte moveId, int casterIndex)
         {
+            Debug.Log($"[Battle] RPC_RequestMove received moveId={moveId} caster={casterIndex} hasAuth={HasStateAuthority}");
             if (!HasStateAuthority) return;
             ResolveMove(moveId, casterIndex);
         }
@@ -239,6 +241,8 @@ namespace Tigerverse.Combat
                 if (casterIsA) HPb = Mathf.Max(0, HPb - damage);
                 else            HPa = Mathf.Max(0, HPa - damage);
             }
+
+            Debug.Log($"[Battle] Resolved {move.displayName} dmg={damage} HPa={HPa} HPb={HPb} phase={Phase}");
 
             // Victory check.
             bool finalBlow = false;

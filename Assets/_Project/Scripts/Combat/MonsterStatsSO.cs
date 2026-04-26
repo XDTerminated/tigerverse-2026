@@ -67,6 +67,24 @@ namespace Tigerverse.Combat
                     resolved.Add(dodge);
             }
 
+            // Defensive fallback: if the backend didn't return any usable
+            // move names (or none of them matched the catalog), `resolved`
+            // ends up containing only Dodge. That leaves the player unable
+            // to attack at all — shouting "fireball" matches nothing because
+            // Fireball isn't in availableMoves. Inject a sane offensive
+            // starter kit so the battle is still playable while we figure
+            // out the network/backend issue.
+            if (catalog != null && resolved.Count <= 1)
+            {
+                Debug.LogWarning($"[MonsterStatsSO] Only Dodge resolved for '{so.displayName}' (data.moves empty or unmatched). Injecting Fireball/Watergun/Thunderbolt fallbacks.");
+                string[] fallbacks = { "Fireball", "Watergun", "Thunderbolt" };
+                for (int i = 0; i < fallbacks.Length; i++)
+                {
+                    var fb = catalog.Find(fallbacks[i]);
+                    if (fb != null && !resolved.Contains(fb)) resolved.Add(fb);
+                }
+            }
+
             if (resolved.Count < 1)
             {
                 Debug.LogError($"[MonsterStatsSO] No valid moves resolved for '{so.displayName}'. Falling back to Dodge only.");

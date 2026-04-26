@@ -569,6 +569,8 @@ namespace Tigerverse.Voice
 
             if (bestMove != null && (bestSubstring || bestScore < matchThreshold))
             {
+                Debug.Log($"[Voice] Match → '{bestMove.displayName}', battle={(battle!=null?"OK":"NULL")}, casterIdx={casterIndex}");
+
                 // Per-move cooldown gate. Each move locks itself out for
                 // bestMove.cooldownSeconds after a successful cast — stronger
                 // moves are tuned with longer cooldowns. Other moves stay
