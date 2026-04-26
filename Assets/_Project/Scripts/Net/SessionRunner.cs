@@ -31,6 +31,14 @@ namespace Tigerverse.Net
         public event Action OnRunnerConnected;
         public event Action OnRunnerDisconnected;
 
+        // Last session code we successfully started — used by the
+        // headset-removed → resume rejoin path so we know what room
+        // to dial back into.
+        private string _lastSessionCode;
+        // While true we're in the middle of an automatic rejoin and
+        // shouldn't fire another one in parallel.
+        private bool _rejoining;
+
         private void Awake()
         {
             if (config == null) config = BackendConfig.Load();
@@ -87,6 +95,11 @@ namespace Tigerverse.Net
                 Debug.Log($"[SessionRunner] StartShared session='{code}' mode=Shared. AppId set: {!string.IsNullOrEmpty(Fusion.Photon.Realtime.PhotonAppSettings.Global.AppSettings.AppIdFusion)}");
                 Runner.ProvideInput = true;
 
+                // Remember the last code we started so we can rejoin
+                // automatically when the player puts the headset back on
+                // after taking it off to draw / browse on their phone.
+                _lastSessionCode = code;
+
             // Scene manager: prefer a NetworkSceneManagerDefault on this GameObject.
             var sceneManager = GetComponent<INetworkSceneManager>();
             if (sceneManager == null)
@@ -142,6 +155,53 @@ namespace Tigerverse.Net
             {
                 await Runner.Shutdown();
             }
+        }
+
+        // ─── Resume-from-headset-removal ────────────────────────────────
+        // Quest pauses the app when you take the headset off (proximity
+        // sensor). Photon Fusion's heartbeats stop, the connection times
+        // out after ~10 s, and you get kicked from the room. When the
+        // player puts the headset back on we get OnApplicationFocus(true)
+        // and OnApplicationPause(false). If the runner is no longer
+        // running at that point, automatically dial back into the same
+        // session code — the player rejoins their match without losing
+        // their egg / opponent / state.
+        //
+        // Requires the player to put the headset back on within Photon's
+        // empty-room TTL (~5 min by default for shared rooms). Past that
+        // the room is gone and we'd need a host-migration flow.
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (hasFocus) TryAutoRejoin("focus regained");
+        }
+
+        private void OnApplicationPause(bool isPaused)
+        {
+            if (!isPaused) TryAutoRejoin("unpaused");
+        }
+
+        private void TryAutoRejoin(string reason)
+        {
+            if (string.IsNullOrEmpty(_lastSessionCode)) return;
+            if (_rejoining) return;
+            // Only rejoin if we WERE in a session that has since dropped.
+            if (Runner != null && Runner.IsRunning) return;
+
+            Debug.Log($"[SessionRunner] Auto-rejoin triggered ({reason}) — re-entering room '{_lastSessionCode}'.");
+            _ = AutoRejoinAsync();
+        }
+
+        private async Task AutoRejoinAsync()
+        {
+            _rejoining = true;
+            try
+            {
+                bool ok = await StartShared(_lastSessionCode);
+                Debug.Log($"[SessionRunner] Auto-rejoin {(ok ? "SUCCEEDED" : "FAILED")} for '{_lastSessionCode}'.");
+            }
+            catch (Exception e) { Debug.LogException(e); }
+            finally { _rejoining = false; }
         }
 
         // ---------- INetworkRunnerCallbacks (only what we need) ----------
