@@ -174,8 +174,10 @@ namespace Tigerverse.Net
             face.name = "Face";
             var fCol = face.GetComponent<Collider>(); if (fCol != null) Destroy(fCol);
             face.transform.SetParent(sphere.transform, false);
+            // Same convention as the professor: head-local -Z is "front", and
+            // a default Quad's normal +Z naturally points back outward.
             face.transform.localPosition = new Vector3(0f, 0.05f, -0.51f);
-            face.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            face.transform.localRotation = Quaternion.identity;
             face.transform.localScale = new Vector3(0.42f, 0.5f, 1f);
             face.GetComponent<Renderer>().sharedMaterial = MakeFaceMaterial();
 
