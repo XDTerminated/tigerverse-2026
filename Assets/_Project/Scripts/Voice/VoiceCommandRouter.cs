@@ -57,6 +57,17 @@ namespace Tigerverse.Voice
             if (config == null) config = BackendConfig.Load();
 
             PickMicDevice();
+            // XR subsystems start a frame or two after Awake, so the first
+            // pick can mis-detect whether we're really on a headset. Re-pick
+            // shortly after to land on the laptop mic when no HMD ever
+            // comes online (laptop play / simulator runs).
+            StartCoroutine(RepickAfterXrInit());
+        }
+
+        private IEnumerator RepickAfterXrInit()
+        {
+            yield return new WaitForSeconds(1.5f);
+            PickMicDevice();
         }
 
         /// <summary>
@@ -90,25 +101,64 @@ namespace Tigerverse.Voice
                 Debug.LogWarning($"[VoiceCommandRouter] preferredMicSubstring='{preferredMicSubstring}' didn't match any device. Trying auto-pick. Available: [{string.Join(", ", devices)}]");
             }
 
-            // Auto-pick: if a Quest/Oculus headset mic is present, prefer it
-            // over any other device (the laptop mic is usually too far / too
-            // quiet when the player is wearing the headset).
+            // Only prefer the Oculus/Quest virtual mic if a real XR display
+            // is actually running. Otherwise the virtual mic is silent (no
+            // headset on the user's head) and we'd pick an input that never
+            // captures anything, breaking voice commands on laptop / sim
+            // play. Detect via XRDisplaySubsystem.running which is the same
+            // signal used by XRSimulatorVRGuard.
+            bool xrRunning = IsAnyXRDisplayRunning();
+
             string[] preferredAuto = { "Oculus", "Quest", "Headset" };
-            foreach (var pref in preferredAuto)
+            if (xrRunning)
             {
+                foreach (var pref in preferredAuto)
+                {
+                    foreach (var d in devices)
+                    {
+                        if (d != null && d.IndexOf(pref, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            micDeviceName = d;
+                            Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (auto-picked via '{pref}', XR active). Available: [{string.Join(", ", devices)}]");
+                            return;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Laptop / simulator path: actively SKIP virtual XR mics and
+                // pick the first real input instead.
                 foreach (var d in devices)
                 {
-                    if (d != null && d.IndexOf(pref, StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (d == null) continue;
+                    bool isVirtual = false;
+                    foreach (var pref in preferredAuto)
                     {
-                        micDeviceName = d;
-                        Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (auto-picked via '{pref}'). Available: [{string.Join(", ", devices)}]");
-                        return;
+                        if (d.IndexOf(pref, StringComparison.OrdinalIgnoreCase) >= 0) { isVirtual = true; break; }
                     }
+                    if (d.IndexOf("Virtual", StringComparison.OrdinalIgnoreCase) >= 0) isVirtual = true;
+                    if (isVirtual) continue;
+
+                    micDeviceName = d;
+                    Debug.Log($"[VoiceCommandRouter] Mic = '{d}' (laptop mode — no XR display running, skipping virtual headset mics). Available: [{string.Join(", ", devices)}]");
+                    return;
                 }
             }
 
             micDeviceName = devices[0];
             Debug.Log($"[VoiceCommandRouter] Mic = '{micDeviceName}' (first device fallback). Available: [{string.Join(", ", devices)}]");
+        }
+
+        private static readonly List<XRDisplaySubsystem> _xrDisplaysScratch = new List<XRDisplaySubsystem>();
+        private static bool IsAnyXRDisplayRunning()
+        {
+            SubsystemManager.GetSubsystems(_xrDisplaysScratch);
+            for (int i = 0; i < _xrDisplaysScratch.Count; i++)
+            {
+                if (_xrDisplaysScratch[i] != null && _xrDisplaysScratch[i].running) return true;
+            }
+            return false;
         }
 
         public void SetPreferredMicSubstring(string substring)
