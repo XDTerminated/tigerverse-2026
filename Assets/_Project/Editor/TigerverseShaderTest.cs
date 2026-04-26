@@ -117,6 +117,12 @@ namespace Tigerverse.EditorTools
                 var monster = spawnParent != null
                     ? spawnParent.GetComponentInChildren<Tigerverse.Combat.MonsterCry>(true)?.gameObject
                     : null;
+
+                // Snap the rig into Pokemon battle stance the moment the
+                // dev presses Ready, exactly like the production flow does
+                // in GameStateManager.RunInspectionPhase.
+                Tigerverse.Combat.BattleStance.PositionBehindMonster(monster, monster);
+
                 var vsGo = new GameObject("DevVsCutscene");
                 var vs = vsGo.AddComponent<Tigerverse.UI.VsCutscene>();
                 vs.StartCoroutine(vs.Play(

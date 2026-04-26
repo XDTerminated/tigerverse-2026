@@ -363,6 +363,13 @@ namespace Tigerverse.Core
             // Idempotent: tears down any prior manager (e.g. from a rematch).
             SetupBattleControlMode();
 
+            // Snap each player behind their own monster so they can see both
+            // creatures in front of them with a clear sightline. Order
+            // matters: SetupBattleControlMode disabled the move providers, so
+            // setting the rig position now won't be immediately undone by a
+            // joystick frame.
+            PositionPlayerBehindMonster();
+
             if (battle != null)
             {
                 battle.Initialize(statsA, statsB);
@@ -429,6 +436,12 @@ namespace Tigerverse.Core
             if (!ready) Debug.LogWarning("[GameStateManager] Inspection phase timed out — auto-advancing to battle.");
 
             if (hsGo != null) Destroy(hsGo);
+
+            // Snap the player into Pokemon-battle stance the *moment* they
+            // ready up (before the VS cutscene plays), so the cutscene's
+            // snapshot of where their monster sits matches where they'll
+            // actually be standing in the fight.
+            PositionPlayerBehindMonster();
         }
 
         // Pokemon-style "VS" transition. Shows snapshots of both monsters
@@ -445,6 +458,21 @@ namespace Tigerverse.Core
                                  monsterB, string.IsNullOrEmpty(nameB) ? "Player 2" : nameB,
                                  () => done = true);
             // vs.Play already waits for cutscene completion + destroys self.
+        }
+
+        // ─── Battle stance: park the local trainer behind their monster ───
+        // Sightline becomes: [trainer camera] -> [own monster] -> [opponent].
+        // Called twice — once when the player readies up (before the VS
+        // cutscene) so the snap is instant from the player's POV, and again
+        // at SetState(AppState.Battle) as a backstop against any rig
+        // movement that snuck in during the cutscene. Locomotion is locked
+        // by SetupBattleControlMode, so the player stays parked here for
+        // the rest of the fight.
+        private void PositionPlayerBehindMonster()
+        {
+            GameObject localMonster    = localCasterIndex == 0 ? monsterAGo : monsterBGo;
+            GameObject opponentMonster = localCasterIndex == 0 ? monsterBGo : monsterAGo;
+            Combat.BattleStance.PositionBehindMonster(localMonster, opponentMonster);
         }
 
         // ─── Battle control mode (Trainer / Scribble) ──────────────────────
