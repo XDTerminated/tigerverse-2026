@@ -70,6 +70,16 @@ namespace Tigerverse.Combat
 
             origin.MatchOriginUpCameraForward(Vector3.up, forward);
             origin.MoveCameraToWorldLocation(cameraTarget);
+
+            // Yaw the monster so it faces the SAME direction as the player —
+            // i.e. toward the opposing slot. The pivots in the scene have
+            // identity rotation (world-Z forward), but the player's stance
+            // forward is along world-X (or whichever axis connects the two
+            // pivots), so without this the creature ends up sideways from
+            // the trainer's POV. Preserve any tilt the monster might have
+            // by only rotating around world-up.
+            localMonster.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+
             Debug.Log($"[BattleStance] Camera→{cameraTarget} forward={forward} (facing {facingSource}) localMonster='{localMonster.name}' opponent='{(opponentMonster != null ? opponentMonster.name : "<none>")}'.");
         }
 
