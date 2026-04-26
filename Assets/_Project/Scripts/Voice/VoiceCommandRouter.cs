@@ -287,7 +287,7 @@ namespace Tigerverse.Voice
                 {
                     _vadInSpeech = true;
                     _vadSpeechStartPos = startSample;
-                    Debug.Log($"[VAD] Speech START rms={rms:F4} (threshold={vadStartThreshold:F4})");
+                    // Speech-START log silenced — kept too noisy in VR.
                 }
                 _vadLastSpeechPos = currentPos;
             }
@@ -315,12 +315,7 @@ namespace Tigerverse.Voice
                         byte[] wav = WavEncoder.EncodeWav(seg, padLen);
                         Destroy(seg);
 
-                        Debug.Log($"[VAD] Speech END utterance={utteranceSec:F2}s rms={rms:F4} — sending to STT.");
                         StartCoroutine(SendToScribe(wav));
-                    }
-                    else
-                    {
-                        Debug.Log($"[VAD] Speech END utterance={utteranceSec:F2}s — too short, ignored.");
                     }
                     _vadInSpeech = false;
                 }

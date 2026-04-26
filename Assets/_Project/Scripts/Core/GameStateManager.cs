@@ -326,6 +326,9 @@ namespace Tigerverse.Core
             // confirm via READY button / voice / fist-bump before battle.
             yield return RunInspectionPhase(spawnA, spawnB);
 
+            // ─── Pokemon-style VS transition cutscene ───────────────────
+            yield return RunVsCutscene(monsterAGo, data?.p1?.name, monsterBGo, data?.p2?.name);
+
             // Pre-battle reveals (sequential).
             SetState(AppState.PreBattleReveal);
             if (revealCards != null && revealCards.Length > 0 && revealCards[0] != null)
@@ -420,6 +423,22 @@ namespace Tigerverse.Core
             if (!ready) Debug.LogWarning("[GameStateManager] Inspection phase timed out — auto-advancing to battle.");
 
             if (hsGo != null) Destroy(hsGo);
+        }
+
+        // Pokemon-style "VS" transition. Shows snapshots of both monsters
+        // side by side with their player names and big yellow VS letters,
+        // then yields back to SpawnFlow once the cutscene finishes.
+        private IEnumerator RunVsCutscene(GameObject monsterA, string nameA,
+                                          GameObject monsterB, string nameB)
+        {
+            var go = new GameObject("VsCutscene");
+            var vs = go.AddComponent<UI.VsCutscene>();
+
+            bool done = false;
+            yield return vs.Play(monsterA, string.IsNullOrEmpty(nameA) ? "Player 1" : nameA,
+                                 monsterB, string.IsNullOrEmpty(nameB) ? "Player 2" : nameB,
+                                 () => done = true);
+            // vs.Play already waits for cutscene completion + destroys self.
         }
 
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)

@@ -31,6 +31,7 @@ namespace Tigerverse.UI
         private Transform _leftCtrl, _rightCtrl;
         private bool _leftInside, _rightInside;
         private float _lastLeftPokeT = -10f, _lastRightPokeT = -10f;
+        private float _lastFindAt;
         private ParticleSystem _puff;
         private int _pokeCount;
 
@@ -68,7 +69,11 @@ namespace Tigerverse.UI
         private void Update()
         {
             if (_egg == null || _egg.IsHatched) return;
-            if (_leftCtrl == null || _rightCtrl == null) FindControllers();
+            if ((_leftCtrl == null || _rightCtrl == null) && Time.unscaledTime - _lastFindAt > 0.5f)
+            {
+                _lastFindAt = Time.unscaledTime;
+                FindControllers();
+            }
 
             TryPoke(_leftCtrl,  ref _leftInside,  ref _lastLeftPokeT,  XRNode.LeftHand);
             TryPoke(_rightCtrl, ref _rightInside, ref _lastRightPokeT, XRNode.RightHand);
@@ -114,8 +119,9 @@ namespace Tigerverse.UI
             go.transform.localPosition = Vector3.zero;
 
             _puff = go.AddComponent<ParticleSystem>();
+            // Stop FIRST so we can safely change main.duration etc.
+            _puff.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
-            // Stop, configure, then leave dormant — Emit() at poke time.
             var main = _puff.main;
             main.playOnAwake = false;
             main.duration = 0.5f;

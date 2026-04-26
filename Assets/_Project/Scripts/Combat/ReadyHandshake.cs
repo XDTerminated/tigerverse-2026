@@ -45,6 +45,7 @@ namespace Tigerverse.Combat
         private float _bumpConfirmedAt;
         private float _lastBumpCheck;
         private float _lastBumpDiag;
+        private float _lastFindAt;
 
         public void Configure(Vector3 buttonWorldPos, Quaternion buttonWorldRot)
         {
@@ -54,7 +55,7 @@ namespace Tigerverse.Combat
             btnGo.transform.position = buttonWorldPos;
             btnGo.transform.rotation = buttonWorldRot;
             _button = btnGo.AddComponent<TutorialStartButton>();
-            _button.StartCoroutine(RelabelButton(_button, "BYPASS"));
+            _button.StartCoroutine(RelabelButton(_button, "I'M READY"));
             _button.OnPressed += HandlePress;
 
             // Floating status text above the button so the player can see
@@ -212,12 +213,7 @@ namespace Tigerverse.Combat
 
             if (_bumpConfirmed != prevBump) UpdateStatusLabel();
 
-            // Periodic diag log so it's clear the loop is alive.
-            if (Time.unscaledTime - _lastBumpDiag > 1.0f)
-            {
-                _lastBumpDiag = Time.unscaledTime;
-                Debug.Log($"[ReadyHandshake] State: voice={_voiceConfirmed} bump={_bumpConfirmed} closest={bestD:F2}m");
-            }
+            // (Periodic diag log removed — it was hammering the console in VR.)
 
             // Both ✓ at the same instant → fire.
             if (_voiceConfirmed && _bumpConfirmed) Fire(bestSrc ?? "simultaneous");

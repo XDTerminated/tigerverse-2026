@@ -32,6 +32,7 @@ namespace Tigerverse.Combat
         private bool _visible;
         private float _phase;
         private float _appearTime;
+        private float _lastFindAt;
         private Vector3 _cardBaseScale = Vector3.one;
         private MonsterCry _cry;
 
@@ -72,7 +73,11 @@ namespace Tigerverse.Combat
         private void Update()
         {
             _phase += Time.deltaTime;
-            if (_leftCtrl == null || _rightCtrl == null) FindControllers();
+            if ((_leftCtrl == null || _rightCtrl == null) && Time.unscaledTime - _lastFindAt > 0.5f)
+            {
+                _lastFindAt = Time.unscaledTime;
+                FindControllers();
+            }
 
             // Strict controller-hover only — no camera-proximity fallback,
             // so players know it's their hand that triggered the card and

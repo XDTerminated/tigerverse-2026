@@ -92,10 +92,17 @@ namespace Tigerverse.Core
             }
 
             // Hand off to the hatch sequence — when the GLB really arrives,
-            // tell the Professor to wrap up so the egg burst owns the moment.
-            if (!_hatchHandedOff && _tutorial != null && !string.IsNullOrEmpty(data.glbUrl))
+            // wrap up the tutorial AND destroy the start-tutorial button so
+            // it doesn't visually overlap the BYPASS / READY UI that
+            // GameStateManager spawns next.
+            if (!_hatchHandedOff && !string.IsNullOrEmpty(data.glbUrl))
             {
-                _tutorial.Stop();
+                if (_tutorial != null) _tutorial.Stop();
+                if (_startButton != null && _startButton.gameObject != null)
+                {
+                    Destroy(_startButton.gameObject);
+                    _startButton = null;
+                }
                 _hatchHandedOff = true;
             }
             if (_egg != null && _egg.IsHatched && _tutorial != null)

@@ -63,7 +63,6 @@ namespace Tigerverse.Combat
             if (!EnsureClip()) return;
             audioSource.pitch = pitch * basePitch;
             audioSource.PlayOneShot(clip);
-            Debug.Log($"[MonsterCry] '{name}' PLAYED clip={clip.name} length={clip.length:F2}s pitch={audioSource.pitch:F2} volume={audioSource.volume} on={audioSource.gameObject.name}");
         }
 
         public void PlaySpawn()        { PlayAt(1.0f); }

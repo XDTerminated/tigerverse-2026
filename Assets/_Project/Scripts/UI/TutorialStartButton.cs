@@ -38,6 +38,7 @@ namespace Tigerverse.UI
         private GameObject  _backing;
         private GameObject  _shadow;
         private float       _phase;
+        private float       _lastFindAt;
         private bool        _hoverState;
         private Color       _backingBaseColor = new Color(1.00f, 0.84f, 0.36f);
         private Color       _backingHoverColor = new Color(1.00f, 0.95f, 0.55f);
@@ -131,7 +132,14 @@ namespace Tigerverse.UI
             _phase += Time.deltaTime;
 
             // VR controller poke.
-            if (_leftCtrl == null || _rightCtrl == null) FindControllers();
+            // Throttle the find to 2 Hz — the rig walk is ~149 transforms
+            // and was firing every frame when controllers hadn't loaded
+            // yet, killing framerate on Quest.
+            if ((_leftCtrl == null || _rightCtrl == null) && Time.unscaledTime - _lastFindAt > 0.5f)
+            {
+                _lastFindAt = Time.unscaledTime;
+                FindControllers();
+            }
 
             // Hover state — checked separately at a wider radius so the
             // player gets clear visual + haptic feedback before they're

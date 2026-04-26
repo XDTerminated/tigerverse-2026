@@ -494,7 +494,7 @@ namespace Tigerverse.UI
             var emission = ps.emission;
             emission.enabled = true;
             emission.rateOverTime = 0;
-            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 70) });
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 30) }); // halved for VR
 
             var shape = ps.shape;
             shape.enabled = true;
@@ -512,6 +512,7 @@ namespace Tigerverse.UI
             rot3D.x = new ParticleSystem.MinMaxCurve(-15f, 15f);
             rot3D.y = new ParticleSystem.MinMaxCurve(-15f, 15f);
             rot3D.z = new ParticleSystem.MinMaxCurve(-15f, 15f);
+            main.maxParticles = 35;
 
             var colOL = ps.colorOverLifetime;
             colOL.enabled = true;
@@ -545,7 +546,7 @@ namespace Tigerverse.UI
             var emission = ps.emission;
             emission.enabled = true;
             emission.rateOverTime = 0;
-            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 90) });
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 40) }); // halved for VR
 
             var shape = ps.shape;
             shape.enabled = true;
@@ -555,7 +556,11 @@ namespace Tigerverse.UI
             var velOL = ps.velocityOverLifetime;
             velOL.enabled = true;
             velOL.space = ParticleSystemSimulationSpace.World;
+            // All three axes must use the same MinMaxCurveMode or Unity
+            // spams "Particle Velocity curves must all be in the same mode"
+            // every frame, which kills performance.
             velOL.x = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+            velOL.y = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
             velOL.z = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
 
             var rotOL = ps.rotationOverLifetime;

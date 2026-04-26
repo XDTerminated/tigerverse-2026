@@ -3042,7 +3042,8 @@ MonoBehaviour:
   autoFindApi: 1
   apiClient: {fileID: 0}
   spawnTutorial: 1
-  onlyForLocalCasterIndex: -1
+  localOnly: 1
+  startButtonOffset: {x: 0.55, y: -0.05, z: 0}
 --- !u!21 &375777425
 Material:
   serializedVersion: 8
@@ -6652,7 +6653,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 0
+  m_PresetInfoIsWorld: 1
 --- !u!223 &808727671
 Canvas:
   m_ObjectHideFlags: 0
@@ -7305,6 +7306,7 @@ MonoBehaviour:
   sampleRate: 16000
   maxRecordSec: 6
   matchThreshold: 0.35
+  preferredMicSubstring: 
   OnTranscript:
     m_PersistentCalls:
       m_Calls: []
@@ -7321,6 +7323,13 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   tapRecordSec: 4
+  openMicMode: 0
+  vadStartThreshold: 0.02
+  vadContinueThreshold: 0.006
+  vadEndSilenceSec: 0.25
+  vadWindowMs: 60
+  vadMinUtteranceSec: 0.2
+  openMicSilenceThreshold: 0.02
 --- !u!4 &883181637
 Transform:
   m_ObjectHideFlags: 0
@@ -12345,7 +12354,8 @@ MonoBehaviour:
   autoFindApi: 1
   apiClient: {fileID: 0}
   spawnTutorial: 1
-  onlyForLocalCasterIndex: -1
+  localOnly: 1
+  startButtonOffset: {x: 0.55, y: -0.05, z: 0}
 --- !u!1 &1456581054
 GameObject:
   m_ObjectHideFlags: 0
@@ -13499,7 +13509,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 0
+  m_PresetInfoIsWorld: 1
 --- !u!223 &1531388742
 Canvas:
   m_ObjectHideFlags: 0
@@ -15762,7 +15772,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1804982139}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01614664b831546d2ae94a42149d80ac, type: 3}
   m_Name: 
@@ -15829,7 +15839,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 0
+  m_PresetInfoIsWorld: 1
 --- !u!223 &1879161596
 Canvas:
   m_ObjectHideFlags: 0

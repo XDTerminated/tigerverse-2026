@@ -108,8 +108,21 @@ namespace Tigerverse.EditorTools
             handshake.Configure(btnPos, btnRot);
             handshake.OnLocalReady += () =>
             {
-                Debug.Log("[Tigerverse/Dev] READY handshake fired — in real flow, pre-battle reveal would play next.");
+                Debug.Log("[Tigerverse/Dev] READY handshake fired — playing VS cutscene.");
                 Object.Destroy(hsGo);
+
+                // Find the freshly-spawned monster on the pivot to use as
+                // the "left" side. The right side reuses the same one in
+                // dev mode (no opponent in solo testing).
+                var monster = spawnParent != null
+                    ? spawnParent.GetComponentInChildren<Tigerverse.Combat.MonsterCry>(true)?.gameObject
+                    : null;
+                var vsGo = new GameObject("DevVsCutscene");
+                var vs = vsGo.AddComponent<Tigerverse.UI.VsCutscene>();
+                vs.StartCoroutine(vs.Play(
+                    monster, "Player 1",
+                    monster, "Player 2",
+                    () => Debug.Log("[Tigerverse/Dev] VS cutscene complete.")));
             };
         }
 
