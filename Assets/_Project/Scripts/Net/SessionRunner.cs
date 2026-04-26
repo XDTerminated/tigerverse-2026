@@ -160,16 +160,30 @@ namespace Tigerverse.Net
         // ─── Resume-from-headset-removal ────────────────────────────────
         // Quest pauses the app when you take the headset off (proximity
         // sensor). Photon Fusion's heartbeats stop, the connection times
-        // out after ~10 s, and you get kicked from the room. When the
-        // player puts the headset back on we get OnApplicationFocus(true)
-        // and OnApplicationPause(false). If the runner is no longer
-        // running at that point, automatically dial back into the same
-        // session code — the player rejoins their match without losing
-        // their egg / opponent / state.
+        // out after ~10 s, and you get kicked from the room. We trigger a
+        // rejoin from THREE sources so we cover every drop pattern:
+        //   • OnApplicationFocus(true) / OnApplicationPause(false)
+        //     — the player put the headset back on; we may or may not
+        //       still be technically "running".
+        //   • OnDisconnectedFromServer
+        //     — Photon told us we're out, regardless of focus state
+        //       (network blip while headset is on, etc).
+        //   • OnShutdown
+        //     — covers explicit shutdowns we didn't initiate.
         //
-        // Requires the player to put the headset back on within Photon's
-        // empty-room TTL (~5 min by default for shared rooms). Past that
-        // the room is gone and we'd need a host-migration flow.
+        // Auto-rejoin runs StartShared with the cached session code on a
+        // background coroutine with retry-with-backoff (every ~3 s for up
+        // to 60 s), so even if Photon's server takes a few seconds to
+        // notice the drop / clean up the old player slot, we land back in
+        // the room as soon as it accepts us.
+        //
+        // Caveat: if the room itself gets garbage-collected by Photon
+        // (default ~5 min empty-room TTL on shared rooms), the rejoin
+        // creates a brand-new room with the same code. The egg / opponent
+        // state is gone in that case.
+
+        private float _lastRejoinAttemptAt;
+        private const float MinRejoinSpacing = 2.0f;
 
         private void OnApplicationFocus(bool hasFocus)
         {
@@ -185,9 +199,16 @@ namespace Tigerverse.Net
         {
             if (string.IsNullOrEmpty(_lastSessionCode)) return;
             if (_rejoining) return;
-            // Only rejoin if we WERE in a session that has since dropped.
-            if (Runner != null && Runner.IsRunning) return;
+            // Don't spam attempts — the focus + pause + disconnect events
+            // all tend to fire within milliseconds of each other.
+            if (Time.unscaledTime - _lastRejoinAttemptAt < MinRejoinSpacing) return;
+            _lastRejoinAttemptAt = Time.unscaledTime;
 
+            // No "already running" early-out — Runner.IsRunning can lag
+            // the actual connection state by hundreds of ms on resume.
+            // Just let StartShared handle the recycle: if we are still
+            // genuinely connected it'll reuse the runner cleanly, and if
+            // we aren't it'll tear down the dead one and dial back in.
             Debug.Log($"[SessionRunner] Auto-rejoin triggered ({reason}) — re-entering room '{_lastSessionCode}'.");
             _ = AutoRejoinAsync();
         }
@@ -197,10 +218,28 @@ namespace Tigerverse.Net
             _rejoining = true;
             try
             {
-                bool ok = await StartShared(_lastSessionCode);
-                Debug.Log($"[SessionRunner] Auto-rejoin {(ok ? "SUCCEEDED" : "FAILED")} for '{_lastSessionCode}'.");
+                // Retry-with-fixed-spacing: Photon's server can take a
+                // few seconds after a disconnect to clear our old player
+                // slot, and rejoining before that returns false. Try
+                // every ~3 s for 60 s before giving up.
+                float deadline = Time.unscaledTime + 60f;
+                int attempt = 0;
+                while (Time.unscaledTime < deadline)
+                {
+                    attempt++;
+                    bool ok = false;
+                    try { ok = await StartShared(_lastSessionCode); }
+                    catch (Exception e) { Debug.LogException(e); }
+                    if (ok)
+                    {
+                        Debug.Log($"[SessionRunner] Auto-rejoin SUCCEEDED on attempt {attempt} for '{_lastSessionCode}'.");
+                        return;
+                    }
+                    Debug.LogWarning($"[SessionRunner] Auto-rejoin attempt {attempt} failed — retrying in 3s.");
+                    await Task.Delay(3000);
+                }
+                Debug.LogError($"[SessionRunner] Auto-rejoin GAVE UP after 60s for '{_lastSessionCode}'.");
             }
-            catch (Exception e) { Debug.LogException(e); }
             finally { _rejoining = false; }
         }
 
@@ -214,6 +253,10 @@ namespace Tigerverse.Net
         public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
         {
             try { OnRunnerDisconnected?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+            // Photon told us we're out (could be headset-removal timeout
+            // OR a transient network blip). Try to climb right back in
+            // using the cached session code — see TryAutoRejoin.
+            TryAutoRejoin($"Photon disconnect ({reason})");
         }
 
         public void OnPlayerJoined(NetworkRunner runner, PlayerRef player) { }
@@ -226,6 +269,11 @@ namespace Tigerverse.Net
         public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
         {
             try { OnRunnerDisconnected?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+            // Treat any shutdown we didn't initiate ourselves (i.e.,
+            // Shutdown() wasn't called externally) as a drop and try to
+            // recover. The MinRejoinSpacing guard de-dupes against the
+            // disconnect callback firing a moment earlier.
+            TryAutoRejoin($"runner shutdown ({shutdownReason})");
         }
         public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
         public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason) { }
