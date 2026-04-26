@@ -10,7 +10,7 @@
     }
   ],
   "dependencies": {
-    "com.coplaydev.unity-mcp": "file:C:/Users/budde/OneDrive/Documents/Desktop/unity-mcp-beta/unity-mcp-beta/MCPForUnity",
+    "com.coplaydev.unity-mcp": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity",
     "com.unity.ai.navigation": "2.0.12",
     "com.unity.cloud.gltfast": "6.10.1",
     "com.unity.collab-proxy": "2.12.4",
