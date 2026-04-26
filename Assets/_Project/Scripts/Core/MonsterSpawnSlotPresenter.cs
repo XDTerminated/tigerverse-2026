@@ -53,6 +53,19 @@ namespace Tigerverse.Core
 
         private void Update()
         {
+            // Local-caster fast path: as soon as GameStateManager knows
+            // which slot belongs to this headset, spawn the egg + tutorial
+            // button on that slot immediately — even if poll data hasn't
+            // come back yet. Player 2 was previously stuck staring at an
+            // empty pivot because data.p2 hadn't propagated to their
+            // local SessionApiClient by the time they wanted to start
+            // their tutorial.
+            if (_egg == null && IsLocalCaster())
+            {
+                var stub = new PlayerData { name = $"Player {slotIndex + 1}" };
+                SpawnEgg(stub);
+            }
+
             if (apiClient == null || apiClient.LastSession == null) return;
 
             PlayerData data = slotIndex == 0 ? apiClient.LastSession.p1 : apiClient.LastSession.p2;
