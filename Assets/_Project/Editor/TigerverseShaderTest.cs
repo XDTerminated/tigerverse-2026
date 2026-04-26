@@ -41,8 +41,13 @@ namespace Tigerverse.EditorTools
             var fetcher = Object.FindFirstObjectByType<Tigerverse.Meshy.ModelFetcher>();
             if (fetcher == null)
             {
-                Debug.LogError("[Tigerverse/Dev] No ModelFetcher in scene. Make sure your Bootstrap GameObject has one.");
-                return;
+                // Auto-spawn one for dev convenience — the bootstrap usually
+                // owns this, but the dev menu shouldn't fail just because
+                // we're testing in a scene that doesn't have it wired yet.
+                Debug.LogWarning("[Tigerverse/Dev] No ModelFetcher in scene — auto-creating one on a runtime helper GameObject.");
+                var fetcherGo = new GameObject("DevModelFetcher");
+                Object.DontDestroyOnLoad(fetcherGo);
+                fetcher = fetcherGo.AddComponent<Tigerverse.Meshy.ModelFetcher>();
             }
 
             // Spawn parent, prefer MonsterSpawnPivotA, fall back to in-front-of-camera.
