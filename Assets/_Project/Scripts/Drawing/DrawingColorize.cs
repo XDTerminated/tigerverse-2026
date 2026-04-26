@@ -16,16 +16,23 @@ namespace Tigerverse.Drawing
                 Debug.LogWarning("[DrawingColorize] root is null — skipping.");
                 return;
             }
-            if (drawingTex == null)
+
+            // No drawing? Still apply the paper material — without it the
+            // monster keeps Meshy's native peachy/skin-toned material and
+            // looks nothing like a paper-craft figure. Use a 1×1 white
+            // texture so the shader's drawing-watermark sampler has a
+            // valid input but contributes nothing visually.
+            bool hasDrawing = drawingTex != null;
+            if (!hasDrawing)
             {
-                Debug.LogWarning($"[DrawingColorize] drawingTex is null on '{root.name}' — material won't be replaced. Check that the session's imageUrl is set + reachable.");
-                return;
+                Debug.LogWarning($"[DrawingColorize] drawingTex is null on '{root.name}'. Applying paper material with no drawing watermark.");
+                drawingTex = GetWhiteTexture();
             }
 
-            Color tint = SampleDominantColor(drawingTex);
+            Color tint = hasDrawing ? SampleDominantColor(drawingTex) : new Color(0.7f, 0.7f, 0.7f);
             // Boost the tint a bit so the dominant color pops — sampling sometimes
             // returns muted greys when ink is thin or anti-aliased.
-            tint = BoostSaturation(tint, 1.4f);
+            if (hasDrawing) tint = BoostSaturation(tint, 1.4f);
 
             Shader stylized = Shader.Find("Tigerverse/DrawingStylized");
             Shader triplanar = Shader.Find("Tigerverse/DrawingTriplanar");
@@ -35,6 +42,14 @@ namespace Tigerverse.Drawing
                 Debug.LogWarning("[DrawingColorize] Stylized shader 'Tigerverse/DrawingStylized' not found. " +
                                  "Falling back to URP/Lit. (Shader probably failed to compile — check Console for shader errors.)");
             }
+
+            // (Previously this also tried to clone TestSphere_Red's
+            // sharedMaterial. Removed: TigerverseShaderTest.SpawnSphereRed
+            // creates a fresh TestSphere_Red with a default white URP/Lit
+            // material then immediately calls Apply — so cloning from it
+            // would copy the default material, not the scene-configured
+            // paper one. Building explicitly from the shader with the
+            // exact scene values is deterministic.)
 
             // Load Paper003 textures from Resources (download via Tigerverse → Textures → Download Paper003).
             Texture2D paperColor = LoadPaperTex("Color");
@@ -58,58 +73,60 @@ namespace Tigerverse.Drawing
                 Mathf.Max(wsBounds.size.z, 0.001f),
                 0);
 
-            // drawingStrength here doubles as the "drawing watermark hint" on the
-            // stylized shader. >0.5 still routes to the legacy triplanar in case
-            // someone wants the all-over wrap.
-            bool useLegacyTriplanar = drawingStrength > 0.5f && triplanar != null;
+            // (Legacy DrawingTriplanar branch removed: it tinted the mesh in
+            // the drawing's dominant ink color which produced peachy /
+            // skin-toned monsters when drawings had warm-colored ink.
+            // We now always go through the paper-stylized path.)
 
             var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true);
-            string usedShader = useLegacyTriplanar ? "DrawingTriplanar(legacy)"
-                              : (stylized != null ? "DrawingStylized" : "URP/Lit fallback");
+            string usedShader = stylized != null ? "DrawingStylized (built from shader)" : "URP/Lit fallback";
             Debug.Log($"[DrawingColorize] '{root.name}' tint=#{ColorUtility.ToHtmlStringRGB(tint)} " +
                       $"renderers={renderers.Length} shader={usedShader} bbox={wsBounds.size}");
             foreach (var rend in renderers)
             {
                 Material mat;
-                if (useLegacyTriplanar)
-                {
-                    mat = new Material(triplanar);
-                    mat.SetTexture("_DrawingTex", drawingTex);
-                    mat.SetColor("_BaseColor", tint);
-                    mat.SetFloat("_ProjectionScale", projectionScale);
-                    mat.SetFloat("_DrawingStrength", drawingStrength);
-                }
-                else if (stylized != null)
+                if (stylized != null)
                 {
                     mat = new Material(stylized);
-                    // Body is pure white paper now — tint is intentionally NOT used.
+                    // Set EVERY property explicitly. The shader CBUFFER's
+                    // serialized defaults aren't always honoured by `new
+                    // Material(shader)` on URP — fields can come back zero,
+                    // which makes _PaperTexScale=0 → divide-by-zero in the
+                    // triplanar UV → garbage paper sampling → monsters
+                    // either look black or mirror-shiny.
+                    mat.SetColor("_PaperColor",          new Color(0.97f, 0.95f, 0.91f, 1f));
+                    mat.SetColor("_PaperShadowTint",     new Color(0.85f, 0.82f, 0.78f, 1f));
+                    mat.SetFloat("_PaperTexScale",       0.6f);
+                    mat.SetFloat("_PaperTexBlend",       0.85f);
+                    mat.SetFloat("_PaperNormalStrength", 0.7f);
+                    mat.SetColor("_OutlineColor",        new Color(0.05f, 0.05f, 0.08f, 1f));
+                    mat.SetFloat("_OutlineThickness",    0.015f);
+                    mat.SetFloat("_PencilStrength",      0f);   // user wants clean paper, no hatch
+                    mat.SetFloat("_PencilContrast",      1.2f);
+                    mat.SetFloat("_PencilScale",         140f);
+                    mat.SetColor("_PencilColor",         new Color(0.05f, 0.05f, 0.08f, 1f));
+                    mat.SetFloat("_Smoothness",          0.04f);
+                    mat.SetFloat("_Metallic",            0f);
+                    mat.SetFloat("_DrawingHint",         hasDrawing ? Mathf.Clamp(drawingStrength <= 0.0001f ? 0.55f : drawingStrength, 0.05f, 0.95f) : 0f);
                     mat.SetTexture("_DrawingTex", drawingTex);
                     mat.SetVector("_BBoxMin", bboxMin);
                     mat.SetVector("_BBoxSize", bboxSize);
-                    // Higher default hint so the doodle is the primary identifier of each monster.
-                    mat.SetFloat("_DrawingHint", Mathf.Clamp(drawingStrength <= 0.0001f ? 0.55f : drawingStrength, 0.05f, 0.95f));
-                    // Force pencil-hatch off across every monster body — the
-                    // user wants a clean texture without the cross-hatch
-                    // overlay regardless of the shader's default value.
-                    mat.SetFloat("_PencilStrength", 0f);
                     if (paperColor != null) mat.SetTexture("_PaperTex", paperColor);
                     if (paperNormal != null) mat.SetTexture("_PaperNormalTex", paperNormal);
+
+                    Debug.Log($"[DrawingColorize] paperColor={(paperColor != null ? paperColor.name : "MISSING")} paperNormal={(paperNormal != null ? paperNormal.name : "MISSING")}");
                 }
                 else
                 {
-                    // URP/Lit fallback path. The stylized shader was missing
-                    // — most likely it failed to compile, or wasn't included
-                    // in the build. Use the paper texture as the base map
-                    // and tint over it, so the monster still reads as
-                    // paper-craft instead of a flat plastic blob. The
-                    // shader-based path is still preferred when available
-                    // because it does triplanar projection + drawing wrap.
+                    // URP/Lit fallback. Stylized shader was missing — most
+                    // likely failed to compile or wasn't included in the
+                    // build. Use the paper texture as the base map with a
+                    // warm-white tint, *not* tinted by the drawing's
+                    // dominant ink color (which is usually dark for
+                    // black-ink-on-white-paper drawings and would make
+                    // the monster read as black/grey).
                     mat = new Material(litShader != null ? litShader : Shader.Find("Standard"));
-                    Color paperTint = new Color(
-                        Mathf.Lerp(0.97f, tint.r, 0.5f),
-                        Mathf.Lerp(0.95f, tint.g, 0.5f),
-                        Mathf.Lerp(0.91f, tint.b, 0.5f),
-                        1f);
+                    Color paperWhite = new Color(0.97f, 0.95f, 0.91f, 1f);
                     if (paperColor != null)
                     {
                         if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", paperColor);
@@ -121,8 +138,8 @@ namespace Tigerverse.Drawing
                         if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", paperNormal);
                         mat.EnableKeyword("_NORMALMAP");
                     }
-                    mat.SetColor("_BaseColor", paperTint);
-                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", paperTint);
+                    mat.SetColor("_BaseColor", paperWhite);
+                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", paperWhite);
                     // Match the matte look of DrawingStylized on the URP/Lit
                     // fallback path so the model never gains a shiny ball
                     // highlight when our custom shader is missing.
@@ -181,6 +198,57 @@ namespace Tigerverse.Drawing
             }
             if (!any) b = new Bounds(Vector3.zero, Vector3.one);
             return b;
+        }
+
+        // Resolve the scene's reference paper material (TestSphere_Red's
+        // shared material). NOT cached — caching across edit-mode menu
+        // invocations risks holding a destroyed Material reference, and
+        // resolving every spawn is cheap. Returns null if the sphere has
+        // been removed; caller falls back to building a fresh material
+        // from the shader.
+        private static Material LoadReferencePaperMaterial()
+        {
+            // Includes inactive objects so a hidden TestSphere_Red still works.
+            var allRenderers = UnityEngine.Object.FindObjectsByType<Renderer>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            Renderer match = null;
+            for (int i = 0; i < allRenderers.Length; i++)
+            {
+                var r = allRenderers[i];
+                if (r == null) continue;
+                if (r.gameObject != null && r.gameObject.name == "TestSphere_Red")
+                {
+                    match = r;
+                    break;
+                }
+            }
+            if (match == null)
+            {
+                Debug.LogWarning("[DrawingColorize] TestSphere_Red not found in scene — falling back to building a paper material from shader defaults. Spawn one via 'Tigerverse → Test → Spawn Shader Test Sphere'.");
+                return null;
+            }
+            var refMat = match.sharedMaterial;
+            if (refMat == null)
+            {
+                Debug.LogWarning("[DrawingColorize] TestSphere_Red has no shared material.");
+                return null;
+            }
+            Debug.Log($"[DrawingColorize] Reference material resolved from TestSphere_Red: '{refMat.name}' (shader='{refMat.shader?.name}').");
+            return refMat;
+        }
+
+        // 1×1 pure-white fallback for when a player's drawing image isn't
+        // available. The DrawingStylized shader's drawing-watermark sampler
+        // still needs a valid Texture2D; sampling white contributes nothing.
+        private static Texture2D _whiteTex;
+        private static Texture2D GetWhiteTexture()
+        {
+            if (_whiteTex != null) return _whiteTex;
+            _whiteTex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            _whiteTex.SetPixel(0, 0, Color.white);
+            _whiteTex.Apply(false, false);
+            _whiteTex.name = "DrawingColorize_WhiteFallback";
+            return _whiteTex;
         }
 
         // Loads the Paper003 texture variant from Resources/PaperTextures/.
