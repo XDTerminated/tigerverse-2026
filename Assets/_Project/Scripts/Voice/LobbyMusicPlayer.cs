@@ -13,7 +13,7 @@ namespace Tigerverse.Voice
     {
         private const string ResourcePath = "Music/LobbyMusic";
         private const float FadeSeconds = 1.0f;
-        private const float PlayingVolume = 0.40f;
+        private const float PlayingVolume = 0.15f;
         private const float StoppedVolume = 0f;
 
         private static LobbyMusicPlayer _instance;
