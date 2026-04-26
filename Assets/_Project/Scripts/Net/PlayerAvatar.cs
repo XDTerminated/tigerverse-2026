@@ -84,6 +84,8 @@ namespace Tigerverse.Net
                 humanoid.leftHandSrc  = leftHandVisual;
                 humanoid.rightHandSrc = rightHandVisual;
                 humanoid.SetBodyColor(tint, accent);
+                // PlayerId is 0-based; show 1-based slot in the floating tag.
+                humanoid.SetDisplayName($"Player {pid + 1}");
 
                 // Replace the head cube with a sphere so it looks like a head.
                 if (headVisual != null)

@@ -53,21 +53,25 @@ namespace Tigerverse.UI
 
             _body = MakePrim(PrimitiveType.Cylinder, paperMat, "Body", localPos: new Vector3(0, 0.35f, 0), localScale: new Vector3(0.32f, 0.35f, 0.32f));
 
-            _head = MakePrim(PrimitiveType.Sphere, paperMat, "Head", localPos: new Vector3(0, 0.84f, 0), localScale: new Vector3(0.32f, 0.32f, 0.32f));
+            _head = MakePrim(PrimitiveType.Sphere, paperMat, "Head", localPos: new Vector3(0, 0.92f, 0), localScale: new Vector3(0.46f, 0.46f, 0.46f));
             _baseHeadLocal = _head.localPosition;
             _baseHeadRot   = _head.localRotation;
 
             // Wizard hat, cone-ish (use a cylinder with a tapered scale to fake a cone).
-            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.04f, 0), localScale: new Vector3(0.18f, 0.20f, 0.18f));
+            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.20f, 0), localScale: new Vector3(0.20f, 0.22f, 0.20f));
             _hat.SetParent(_head, worldPositionStays: true);
 
             // Hat brim (flat cylinder underneath).
-            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 0.95f, 0), localScale: new Vector3(0.30f, 0.012f, 0.30f));
+            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 1.06f, 0), localScale: new Vector3(0.36f, 0.012f, 0.36f));
             brim.SetParent(_head, worldPositionStays: true);
 
             // Face: hand-drawn doodle face on a quad pinned to the front of
             // the head sphere. Replaces the old eye + mouth primitives.
             BuildFaceQuad(_head);
+
+            // Floating "Professor" name tag above the hat, billboards to the
+            // local camera each frame.
+            Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 1.55f);
 
             // Arms, two thin elongated cubes with rotation pivots near the shoulder.
             _leftArm  = MakeArm(name: "ArmL", paperMat, shoulder: new Vector3(-0.20f, 0.62f, 0f), tilt: 18f);

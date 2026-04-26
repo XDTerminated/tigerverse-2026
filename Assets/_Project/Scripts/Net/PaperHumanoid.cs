@@ -35,7 +35,9 @@ namespace Tigerverse.Net
         [SerializeField] private Color accentColor = new Color(0.30f, 0.45f, 0.85f);
         [SerializeField] private bool  showHat     = true;
         [Tooltip("Visible head sphere radius (metres) attached to the synced head transform.")]
-        [SerializeField] private float headRadius  = 0.13f;
+        [SerializeField] private float headRadius  = 0.20f;
+        [Tooltip("Vertical offset (metres) lifting the head sphere above the synced head transform so it sits above the torso instead of sinking into it.")]
+        [SerializeField] private float headLift    = 0.08f;
 
         public Renderer[] BodyRenderers { get; private set; }
 
@@ -45,6 +47,17 @@ namespace Tigerverse.Net
         private Material  _bodyMat;
         private Material  _accentMat;
         private static Material _faceMat;
+
+        // Display name for the floating billboard label above the head.
+        // Default to "Player"; PlayerAvatar (or any other spawner) can call
+        // SetDisplayName("Player 1") / ("Player 2") to differentiate slots.
+        [SerializeField] private string displayName = "Player";
+        private Tigerverse.UI.BillboardLabel _nameLabel;
+        public void SetDisplayName(string name)
+        {
+            displayName = name;
+            if (_nameLabel != null) _nameLabel.SetText(name);
+        }
 
         private void Awake()
         {
@@ -150,7 +163,7 @@ namespace Tigerverse.Net
             sphere.name = "Head";
             var sCol = sphere.GetComponent<Collider>(); if (sCol != null) Destroy(sCol);
             sphere.transform.SetParent(headSrc, false);
-            sphere.transform.localPosition = Vector3.zero;
+            sphere.transform.localPosition = new Vector3(0f, headLift, 0f);
             sphere.transform.localScale = Vector3.one * (headRadius * 2f);
             sphere.GetComponent<Renderer>().sharedMaterial = _bodyMat;
             _headSphereT = sphere.transform;
@@ -165,6 +178,10 @@ namespace Tigerverse.Net
             face.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             face.transform.localScale = new Vector3(0.42f, 0.5f, 1f);
             face.GetComponent<Renderer>().sharedMaterial = MakeFaceMaterial();
+
+            // Floating "Player 1" / "Player 2" tag above the head.
+            if (_nameLabel == null)
+                _nameLabel = Tigerverse.UI.BillboardLabel.Create(headSrc, displayName, yOffset: headRadius + 0.18f);
         }
 
         private static Material MakeFaceMaterial()
