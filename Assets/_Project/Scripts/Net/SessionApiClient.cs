@@ -80,22 +80,36 @@ namespace Tigerverse.Net
             {
                 req.timeout = 10;
                 req.SetRequestHeader("Accept", "application/json");
+                float t0 = Time.realtimeSinceStartup;
                 yield return req.SendWebRequest();
+                float dt = Time.realtimeSinceStartup - t0;
 
 #if UNITY_2020_1_OR_NEWER
                 bool isError = req.result != UnityWebRequest.Result.Success;
 #else
                 bool isError = req.isNetworkError || req.isHttpError;
 #endif
+                Debug.Log($"[SessionApiClient] RESP {url} after {dt:F2}s → HTTP {req.responseCode} result={req.result}");
+
                 if (isError || req.responseCode >= 400)
                 {
-                    Debug.LogWarning($"[SessionApiClient] GET {url} → HTTP {req.responseCode} result={req.result} err='{req.error}'");
+                    if (req.responseCode == 404)
+                    {
+                        // Expected until at least one player visits the join URL
+                        // on the website. Don't spam Warnings for this — it's
+                        // the steady-state while waiting for the first submit.
+                        Debug.Log($"[SessionApiClient] 404 — backend has no session for this code yet. Open '{config.backendBaseUrl.TrimEnd('/')}/join/{code}?p=1' (or p=2 for the joiner) in a browser and submit a drawing to create the session.");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[SessionApiClient] GET {url} → HTTP {req.responseCode} result={req.result} err='{req.error}'");
+                    }
                     onComplete?.Invoke(null, $"HTTP {req.responseCode}: {req.error}");
                     yield break;
                 }
 
                 string text = req.downloadHandler != null ? req.downloadHandler.text : null;
-                Debug.Log($"[SessionApiClient] GET {url} → HTTP {req.responseCode} body={(text == null ? "null" : text.Length + " chars")}");
+                Debug.Log($"[SessionApiClient] body length = {(text == null ? "null" : text.Length + " chars")}");
                 if (string.IsNullOrEmpty(text))
                 {
                     onComplete?.Invoke(null, "Empty response body");
@@ -128,6 +142,18 @@ namespace Tigerverse.Net
         {
             if (config == null) config = BackendConfig.Load();
 
+            // Cancel any previously-running poll loop so we don't end up
+            // with N parallel coroutines firing GETs every interval. Each
+            // press of the Host / Join button calls BeginDrawWait which
+            // calls this — without this guard the old loops keep going
+            // forever, multiplying request volume by N each press.
+            if (_polling)
+            {
+                Debug.LogWarning($"[SessionApiClient] PollUntilReady called while a previous poll loop was still running. Stopping the old one.");
+                _polling = false;
+                // Yield one frame so the old loop sees _polling=false and exits cleanly.
+                yield return null;
+            }
             _polling = true;
 
             if (config.useMock)
