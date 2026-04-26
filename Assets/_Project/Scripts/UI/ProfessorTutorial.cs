@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using GLTFast;
+using Tigerverse.Combat;
 using Tigerverse.Drawing;
 using Tigerverse.Net;
 using Tigerverse.Voice;
@@ -51,9 +52,9 @@ namespace Tigerverse.UI
         private bool           _practiceMode;
         private bool           _practiceTriggered;
         private bool           _continuousPractice;
-        private int            _practiceHitCount;
         private GameObject     _borrowedScribble;
         private GameObject     _dummy;
+        private BattleHUD      _practiceHud;
         private readonly Queue<string> _pendingQuestions = new Queue<string>();
         private readonly List<string>  _conversationLog = new List<string>();
 
@@ -65,21 +66,25 @@ namespace Tigerverse.UI
         private Vector3 _stageForward; // points from stage toward the player (so professor faces this)
         private Vector3 _stageLeft;    // 90° from forward, "left of professor from the player's POV"
 
-        // Move trigger keywords used during continuous practice. Each entry's
-        // first element is the canonical move name (used to pick a color),
-        // the rest are simple Contains() keywords we accept from a transcript.
-        private static readonly (string move, string[] keywords, Color color)[] PracticeMoves =
+        // Burst color for a move's element — used by the continuous-practice
+        // OnMoveCast handler to pick particle hues per move type. Mirrors the
+        // saturated/punchy palette the original keyword table used (the
+        // shared ElementType.ToColor() palette is muted for HUD use).
+        private static Color BurstColorForElement(ElementType e)
         {
-            ("thunder bolt",  new[] { "thunder", "bolt", "lightning" },         new Color(1f,    0.95f, 0.40f)), // electric/yellow
-            ("fireball",      new[] { "fire",    "fireball", "flame", "burn" }, new Color(1f,    0.55f, 0.20f)), // fire/orange
-            ("water gun",     new[] { "water",   "aqua",     "splash" },        new Color(0.30f, 0.65f, 1.00f)), // water/blue
-            ("ice shard",     new[] { "ice",     "frost",    "freeze" },        new Color(0.75f, 0.95f, 1.00f)), // ice/pale cyan
-            ("leaf blade",    new[] { "leaf",    "grass",    "vine" },          new Color(0.45f, 0.85f, 0.40f)), // grass/green
-            ("rock smash",    new[] { "rock",    "stone",    "earth", "smash" },new Color(0.60f, 0.45f, 0.30f)), // rock/brown
-            ("shadow bite",   new[] { "shadow",  "dark",     "bite" },          new Color(0.45f, 0.25f, 0.65f)), // dark/purple
-            ("healing aura",  new[] { "heal",    "healing",  "aura"  },         new Color(0.55f, 1.00f, 0.65f)), // heal/soft-green
-            ("taunt",         new[] { "taunt"  },                               new Color(1.00f, 1.00f, 1.00f)), // taunt/white
-        };
+            switch (e)
+            {
+                case ElementType.Electric: return new Color(1f,    0.95f, 0.40f);
+                case ElementType.Fire:     return new Color(1f,    0.55f, 0.20f);
+                case ElementType.Water:    return new Color(0.30f, 0.65f, 1.00f);
+                case ElementType.Ice:      return new Color(0.75f, 0.95f, 1.00f);
+                case ElementType.Grass:    return new Color(0.45f, 0.85f, 0.40f);
+                case ElementType.Earth:    return new Color(0.60f, 0.45f, 0.30f);
+                case ElementType.Dark:     return new Color(0.45f, 0.25f, 0.65f);
+                case ElementType.Neutral:
+                default:                   return new Color(1.00f, 1.00f, 1.00f);
+            }
+        }
 
         private const int MaxConversationTurns = 8;
         private const string FallbackVoice = "21m00Tcm4TlvDq8ikWAM"; // Rachel — works on every ElevenLabs free key
@@ -142,8 +147,13 @@ namespace Tigerverse.UI
             {
                 voiceRouter.OnTranscript.RemoveListener(OnPlayerSpoke);
                 voiceRouter.OnTranscript.RemoveListener(OnPracticeTranscript);
-                voiceRouter.OnTranscript.RemoveListener(OnContinuousPracticeTranscript);
+                voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
                 voiceRouter.SetOpenMicMode(false); // restore push-to-talk for combat
+            }
+            if (_practiceHud != null)
+            {
+                Destroy(_practiceHud.gameObject);
+                _practiceHud = null;
             }
         }
 
@@ -178,8 +188,13 @@ namespace Tigerverse.UI
             // Stop continuous practice listeners immediately.
             if (_continuousPractice && voiceRouter != null)
             {
-                voiceRouter.OnTranscript.RemoveListener(OnContinuousPracticeTranscript);
+                voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
                 _continuousPractice = false;
+            }
+            if (_practiceHud != null)
+            {
+                Destroy(_practiceHud.gameObject);
+                _practiceHud = null;
             }
 
             // Speak a goodbye line (uses SpeakLine directly, NOT the
@@ -381,13 +396,16 @@ namespace Tigerverse.UI
 
             var container = new GameObject("BorrowedScribble");
             container.transform.SetParent(transform, worldPositionStays: true);
-            // Sit between the Professor (at stage center) and the dummy
-            // (further to the professor's left). 0.4m to the left puts it
-            // visibly between the two from the player's POV.
-            container.transform.position = _stageCenter + _stageLeft * 0.4f;
-            // Face the same direction the Professor is facing (toward player).
-            if (_stageForward.sqrMagnitude > 1e-4f)
-                container.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
+            // Sit BETWEEN the Professor and the dummy along the depth axis,
+            // 0.5m further from the player than the Professor. (_stageForward
+            // points stage->player, so subtracting it pushes us away from
+            // the player toward the dummy.)
+            container.transform.position = _stageCenter - _stageForward * 0.5f;
+            // The scribble is the "attacker" in this trio — make it face
+            // AWAY from the player toward the dummy further forward.
+            Vector3 awayFromPlayer = -_stageForward;
+            if (awayFromPlayer.sqrMagnitude > 1e-4f)
+                container.transform.rotation = Quaternion.LookRotation(awayFromPlayer, Vector3.up);
             else
                 container.transform.rotation = Quaternion.Euler(0, 90f, 0);
 
@@ -413,12 +431,17 @@ namespace Tigerverse.UI
         {
             if (_dummy != null) return;
             // Procedural paper-craft target dummy: head ball + body cylinder
-            // + a tiny X face, painted plain white. Sits ~1m to the
-            // professor's left from the player's POV, facing back toward
-            // the player so the X eyes are visible.
+            // + a tiny X face, painted plain white. Sits 1.7m further from
+            // the player than the Professor (1.2m further than the borrowed
+            // scribble), facing BACK toward the player so its X eyes are
+            // visible — and so it reads as the scribble's target.
             var root = new GameObject("PracticeDummy");
             root.transform.SetParent(transform, worldPositionStays: true);
-            root.transform.position = _stageCenter + _stageLeft * 1.0f;
+            root.transform.position = _stageCenter - _stageForward * 1.7f;
+            // Face back toward the player (and therefore back toward the
+            // scribble that's "attacking" it). _stageForward points
+            // stage->player, so a LookRotation along _stageForward orients
+            // the dummy's forward axis at the player.
             if (_stageForward.sqrMagnitude > 1e-4f)
                 root.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
             else
@@ -588,19 +611,48 @@ namespace Tigerverse.UI
 
         // ─── Continuous practice ────────────────────────────────────────
         // Runs after the wrap-up line, until BeginLeave/Stop is called.
-        // The player can keep voice-casting moves at the dummy; every
-        // ~5 hits the dummy falls over and respawns. This is a visual
-        // stand-in for HP — no real numbers tracked.
+        // The player can keep voice-casting moves at the dummy; the dummy
+        // never dies — it just plays a hit reaction every time. We bind a
+        // real practice moveset onto the voice router so the wrist HUD
+        // (BattleHUD) shows "Fireball" / "Thunderbolt" / etc instead of
+        // placeholders, and the router does all keyword matching itself
+        // via the moves' triggerPhrases.
         private IEnumerator RunContinuousPractice()
         {
             // The scripted ThunderBolt demo destroys the dummy. Bring it
             // back so there's something to practice on.
             if (_dummy == null) SpawnDummy();
 
-            _practiceHitCount = 0;
+            // Build a small "starter kit" of MoveSOs and bind them to the
+            // voice router so its OnMoveCast event fires whenever the player
+            // shouts one of the trigger phrases — and so BattleHUD can
+            // read them via voiceRouter.AvailableMoves.
+            var practiceMoves = BuildPracticeMoveset();
+            if (voiceRouter != null && practiceMoves != null && practiceMoves.Length > 0)
+            {
+                // No BattleManager during practice — the router won't try to
+                // SubmitMove anywhere, it just fires OnMoveCast.
+                voiceRouter.Bind(null, 0, practiceMoves);
+            }
+
+            // Spawn the wrist HUD so the player can see their practice moves
+            // and cooldowns. World-space, NOT parented to the tutorial — the
+            // HUD anchors itself to the XR left-controller every frame.
+            if (practiceMoves != null && practiceMoves.Length > 0)
+            {
+                var hudGo = new GameObject("PracticeHUD", typeof(RectTransform));
+                hudGo.transform.SetParent(null, worldPositionStays: true);
+                _practiceHud = hudGo.AddComponent<BattleHUD>();
+                _practiceHud.Configure(voiceRouter, "You");
+                // Configure() reads voice.AvailableMoves immediately — the
+                // moveset is already bound above so it should pick up the
+                // names right away. Update() also auto-refreshes when the
+                // moveset reference changes, so we don't need ForceRefresh.
+            }
+
             _continuousPractice = true;
             if (voiceRouter != null)
-                voiceRouter.OnTranscript.AddListener(OnContinuousPracticeTranscript);
+                voiceRouter.OnMoveCast.AddListener(OnContinuousPracticeMoveCast);
 
             ShowSubtitle("(Practice freely — call out moves to attack the dummy!)");
             Debug.Log("[ProfessorTutorial] Continuous practice mode active.");
@@ -612,30 +664,53 @@ namespace Tigerverse.UI
 
             if (_continuousPractice && voiceRouter != null)
             {
-                voiceRouter.OnTranscript.RemoveListener(OnContinuousPracticeTranscript);
+                voiceRouter.OnMoveCast.RemoveListener(OnContinuousPracticeMoveCast);
             }
             _continuousPractice = false;
         }
 
-        private void OnContinuousPracticeTranscript(string transcript)
+        // Picks 4 starter moves out of the global MoveCatalog: Fireball,
+        // Thunderbolt, Watergun, Iceshard. Returns null if the catalog
+        // isn't loaded so the caller can fail gracefully.
+        private MoveSO[] BuildPracticeMoveset()
+        {
+            var catalog = MoveCatalog.Instance;
+            if (catalog == null)
+            {
+                catalog = Resources.Load<MoveCatalog>("MoveCatalog");
+            }
+            if (catalog == null)
+            {
+                Debug.LogWarning("[ProfessorTutorial] MoveCatalog not found in Resources — practice HUD will be empty.");
+                return null;
+            }
+
+            string[] wanted = { "Fireball", "Thunderbolt", "Watergun", "Iceshard" };
+            var picked = new List<MoveSO>(wanted.Length);
+            for (int i = 0; i < wanted.Length; i++)
+            {
+                var m = catalog.Find(wanted[i]);
+                if (m != null) picked.Add(m);
+            }
+            if (picked.Count == 0)
+            {
+                Debug.LogWarning("[ProfessorTutorial] None of the expected practice moves were found in MoveCatalog.");
+                return null;
+            }
+            return picked.ToArray();
+        }
+
+        // VoiceRouter has already done all the keyword matching against the
+        // bound moveset's triggerPhrases — we just react with a hit anim +
+        // colored particle burst. The dummy NEVER dies in practice mode.
+        private void OnContinuousPracticeMoveCast(MoveSO move)
         {
             if (!_continuousPractice || _stopRequested) return;
-            if (string.IsNullOrEmpty(transcript)) return;
+            if (move == null || _dummy == null) return;
 
-            string lower = transcript.ToLowerInvariant();
-            for (int i = 0; i < PracticeMoves.Length; i++)
-            {
-                var entry = PracticeMoves[i];
-                for (int k = 0; k < entry.keywords.Length; k++)
-                {
-                    if (lower.Contains(entry.keywords[k]))
-                    {
-                        Debug.Log($"[ProfessorTutorial] Practice hit: '{entry.move}' (matched '{entry.keywords[k]}' in '{lower}')");
-                        StartCoroutine(PracticeMoveHit(entry.move, entry.color));
-                        return;
-                    }
-                }
-            }
+            Color burstColor = BurstColorForElement(move.element);
+            Debug.Log($"[ProfessorTutorial] Practice hit: '{move.displayName}' (element={move.element})");
+            StartCoroutine(PracticeMoveHit(move.displayName, burstColor));
         }
 
         private IEnumerator PracticeMoveHit(string moveName, Color fxColor)
@@ -657,43 +732,8 @@ namespace Tigerverse.UI
                 yield return null;
             }
             if (_dummy != null) _dummy.transform.localScale = startScale;
-
-            _practiceHitCount++;
-            if (_practiceHitCount >= 5)
-            {
-                yield return PracticeFallAndRespawn();
-            }
-        }
-
-        private IEnumerator PracticeFallAndRespawn()
-        {
-            if (_dummy != null)
-            {
-                Vector3 startPos = _dummy.transform.localPosition;
-                Quaternion startRot = _dummy.transform.localRotation;
-
-                float t = 0f, dur = 0.55f;
-                while (t < dur && _dummy != null)
-                {
-                    t += Time.deltaTime;
-                    float k = Mathf.Clamp01(t / dur);
-                    float eased = k * k;
-                    _dummy.transform.localRotation = startRot * Quaternion.Euler(0f, 0f, 90f * eased);
-                    _dummy.transform.localPosition = startPos + new Vector3(0, -0.05f * eased, 0);
-                    yield return null;
-                }
-
-                yield return new WaitForSeconds(0.35f);
-                FadeAndDestroy(_dummy, 0.4f);
-                _dummy = null;
-            }
-
-            // Wait, then respawn (only if we're still meant to be running).
-            yield return new WaitForSeconds(1.5f);
-            if (_stopRequested) yield break;
-
-            SpawnDummy();
-            _practiceHitCount = 0;
+            // Dummy stays standing — no fall, no respawn. Just keep playing
+            // hit reactions until the tutorial leaves.
         }
 
         // Lightning-style burst, but with a parameterized color so different
@@ -704,10 +744,11 @@ namespace Tigerverse.UI
 
             // Origin: borrowed scribble if present, else somewhere between
             // the stage center and the dummy so the burst still has a clear
-            // direction toward the target.
+            // direction toward the target. Fallback uses the same 0.5m
+            // forward offset that LoadBorrowedScribble() applies.
             Vector3 origin = _borrowedScribble != null
                 ? _borrowedScribble.transform.position + Vector3.up * 0.4f
-                : _stageCenter + _stageLeft * 0.4f + Vector3.up * 0.5f;
+                : _stageCenter - _stageForward * 0.5f + Vector3.up * 0.5f;
 
             var go = new GameObject("PracticeBurstFx");
             go.transform.SetParent(transform, worldPositionStays: true);
