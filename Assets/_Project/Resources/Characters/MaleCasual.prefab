@@ -64,6 +64,34 @@ PrefabInstance:
       propertyPath: m_Name
       value: MaleCasual
       objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_AABB.m_Center.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_AABB.m_Center.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_AABB.m_Center.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_AABB.m_Extent.x
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_AABB.m_Extent.y
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_AABB.m_Extent.z
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 6447575631356062195, guid: d50ee7be7b930491781b741cd35d28b6, type: 3}
+      propertyPath: m_UpdateWhenOffscreen
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

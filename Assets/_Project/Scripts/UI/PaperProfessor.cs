@@ -41,6 +41,13 @@ namespace Tigerverse.UI
         private bool      _spawning;
         private bool      _leaving;
 
+        // Procedural clap rig — bones we override in LateUpdate to bring
+        // the hands together since the Adventurer FBX has no clap clip.
+        private Transform _upperArmL, _upperArmR, _lowerArmL, _lowerArmR;
+        private Quaternion _restUpperL, _restUpperR, _restLowerL, _restLowerR;
+        private float _clapStartT = -10f;
+        private const float ClapTotalDur = 0.7f;
+
         // Eased look-at-player state.
         private Camera    _cam;
         private float     _currentYaw;
@@ -78,8 +85,36 @@ namespace Tigerverse.UI
             _baseModelLocalPos = _model.localPosition;
             _animator = inst.GetComponentInChildren<Animator>();
 
+            // Cache the arm bones we'll drive procedurally for clap. Names
+            // match the Adventurer / Casual KayKit rigs (Shoulder.L,
+            // UpperArm.L, LowerArm.L, mirrored on the right).
+            FindArmBones(inst.transform);
+
             // Floating "Professor" tag, sits above the figure's head.
             Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 2.15f);
+        }
+
+        private void FindArmBones(Transform root)
+        {
+            _upperArmL = FindByName(root, "UpperArm.L");
+            _upperArmR = FindByName(root, "UpperArm.R");
+            _lowerArmL = FindByName(root, "LowerArm.L");
+            _lowerArmR = FindByName(root, "LowerArm.R");
+            if (_upperArmL != null) _restUpperL = _upperArmL.localRotation;
+            if (_upperArmR != null) _restUpperR = _upperArmR.localRotation;
+            if (_lowerArmL != null) _restLowerL = _lowerArmL.localRotation;
+            if (_lowerArmR != null) _restLowerR = _lowerArmR.localRotation;
+        }
+
+        private static Transform FindByName(Transform root, string name)
+        {
+            if (root.name == name) return root;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var hit = FindByName(root.GetChild(i), name);
+                if (hit != null) return hit;
+            }
+            return null;
         }
 
         private void Update()
@@ -141,18 +176,55 @@ namespace Tigerverse.UI
         {
             _speakT = Time.time;
             if (duration > 0f) speakDuration = duration;
-            if (_animator != null && _animator.runtimeAnimatorController != null)
+            // Procedurally clap (the Adventurer FBX has no clap clip) and
+            // play the matching clap audio. Three claps spread across
+            // ClapTotalDur, synced to the audio clap timings in ClapSfx.
+            _clapStartT = Time.time;
+            ClapSfx.Play(transform.position + Vector3.up * 1.4f);
+        }
+
+        // Override the cached arm bones AFTER the Animator has run for the
+        // frame so our pose wins. Three clap apex points at t=0.05, 0.26,
+        // 0.48 line up with the audio's three claps.
+        private void LateUpdate()
+        {
+            if (_clapStartT < 0f) return;
+            float t = Time.time - _clapStartT;
+            if (t > ClapTotalDur)
             {
-                foreach (var p in _animator.parameters)
-                {
-                    if (p.nameHash == SpeakHash)
-                    {
-                        _animator.SetTrigger(SpeakHash);
-                        ClapSfx.Play(transform.position + Vector3.up * 1.4f);
-                        break;
-                    }
-                }
+                // Settle back to rest (no further override needed).
+                _clapStartT = -10f;
+                return;
             }
+
+            // Three triangular envelopes (apex = clap impact, hands together)
+            // peaking at the audio clap times. Each clap is ~120ms wide.
+            float[] apex   = { 0.05f, 0.26f, 0.48f };
+            float clapWidth = 0.10f;
+            float k = 0f;
+            for (int i = 0; i < apex.Length; i++)
+            {
+                float d = Mathf.Abs(t - apex[i]) / clapWidth;
+                if (d < 1f) k = Mathf.Max(k, 1f - d);
+            }
+            // Smoothstep so impact feels snappy.
+            k = k * k * (3f - 2f * k);
+
+            // Apex pose: arms forward and inward so hands meet near the
+            // chest. Empirically tuned for the Adventurer rig (bone forward
+            // axis is along its own +Y, so we rotate around X for forward
+            // raise and around Y for inward swing).
+            ApplyArm(_upperArmL, _restUpperL, new Vector3(-75f, -45f,  35f), k);
+            ApplyArm(_upperArmR, _restUpperR, new Vector3(-75f,  45f, -35f), k);
+            ApplyArm(_lowerArmL, _restLowerL, new Vector3(  0f, -25f,  40f), k);
+            ApplyArm(_lowerArmR, _restLowerR, new Vector3(  0f,  25f, -40f), k);
+        }
+
+        private static void ApplyArm(Transform bone, Quaternion rest, Vector3 apexEuler, float k)
+        {
+            if (bone == null) return;
+            var apex = rest * Quaternion.Euler(apexEuler);
+            bone.localRotation = Quaternion.Slerp(rest, apex, k);
         }
 
         /// <summary>
@@ -208,7 +280,7 @@ namespace Tigerverse.UI
             {
                 foreach (var p in _animator.parameters)
                 {
-                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); ClapSfx.Play(transform.position + Vector3.up * 1.4f); break; }
+                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); break; }
                 }
             }
         }
@@ -227,7 +299,7 @@ namespace Tigerverse.UI
             {
                 foreach (var p in _animator.parameters)
                 {
-                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); ClapSfx.Play(transform.position + Vector3.up * 1.4f); break; }
+                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); break; }
                 }
             }
             const float waveDur = 0.7f;
