@@ -410,18 +410,32 @@ namespace Tigerverse.Core
             // ─── Find a BattleManager — inspector ref OR scene search ───
             // If the SerializeField wasn't wired, search the scene so RPC-
             // backed damage still works. Without this, voice would match but
-            // the SubmitMove call would no-op silently.
+            // the SubmitMove call would no-op silently. Spawn is async on the
+            // master client (via SessionRunner.StartShared → Runner.Spawn) and
+            // replication takes a few Fusion ticks to fan out to joiners, so
+            // we poll for it instead of failing on the first miss — fixes the
+            // race where SpawnFlow ran before the BattleManager NetworkObject
+            // was visible to this client and we ended up with a null battle
+            // (no Initialize, no Bind → voice match worked but SubmitMove went
+            // nowhere or hit an uninitialised BattleManager).
             var resolvedBattle = battle;
             if (resolvedBattle == null)
             {
-                resolvedBattle = FindFirstObjectByType<BattleManager>();
+                const float waitForBattleManagerSec = 5f;
+                float deadline = Time.time + waitForBattleManagerSec;
+                while (Time.time < deadline)
+                {
+                    resolvedBattle = FindFirstObjectByType<BattleManager>();
+                    if (resolvedBattle != null) break;
+                    yield return new WaitForSeconds(0.20f);
+                }
                 if (resolvedBattle != null)
                 {
-                    Debug.LogWarning($"[GameStateManager] battle SerializeField was null — found one in scene: {resolvedBattle.name}");
+                    Debug.LogWarning($"[GameStateManager] battle SerializeField was null — found one in scene after wait: {resolvedBattle.name}");
                 }
                 else
                 {
-                    Debug.LogError("[GameStateManager] No BattleManager in scene. Damage cannot apply. Add a BattleManager GameObject + NetworkObject to the scene.");
+                    Debug.LogError("[GameStateManager] No BattleManager in scene after waiting 5s for Fusion replication. Damage cannot apply. Check Bootstrap.SessionRunner.battleManagerPrefab is wired AND the master client successfully started Photon.");
                 }
             }
 
