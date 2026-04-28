@@ -28,7 +28,7 @@ namespace Tigerverse.UI
         public void Initialize(Transform parent, string speakerName, Texture2D portrait)
         {
             transform.SetParent(parent, false);
-            transform.localPosition = new Vector3(0f, 1.95f, 0f);
+            transform.localPosition = new Vector3(0f, 2.4f, 0f);
             transform.localRotation = Quaternion.identity;
 
             _card = new GameObject("DialogueCard");
