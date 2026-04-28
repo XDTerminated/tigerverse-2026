@@ -254,8 +254,9 @@ namespace Tigerverse.UI
             {
                 // RPG-style dialogue box (panel + portrait + speaker header +
                 // body), parented to the professor so it tracks any bob/sway.
-                // Initialize() positions it at localY 1.95 (above the hat),
-                // and the script billboards each LateUpdate to face the player.
+                // Initialize() positions it at localY 2.4 (well above the hat,
+                // hat top sits at y=1.47), and the script billboards each
+                // LateUpdate to face the player.
                 var dialogueGo = new GameObject("ProfessorDialogue");
                 _dialogueBox = dialogueGo.AddComponent<RPGDialogueBox>();
                 _dialogueBox.Initialize(profGo.transform, "Professor Hooten",
@@ -441,11 +442,8 @@ namespace Tigerverse.UI
         private void SpawnDummy()
         {
             if (_dummy != null) return;
-            // Practice dummy now mirrors the professor's procedural body
-            // (legs, torso, head, arms) so it reads as a blank paper figure
-            // standing in for an opponent. Strip the hat, brim, face, and
-            // floating name tag so it doesn't look like a clone of the
-            // professor. Sits 1.7m further from the player.
+            // Practice dummy is the static CharacterBase FBX, sitting 1.7m
+            // further from the player than the Professor.
             var root = new GameObject("PracticeDummy");
             root.transform.SetParent(transform, worldPositionStays: true);
             root.transform.position = _stageCenter - _stageForward * 1.7f;
@@ -454,32 +452,20 @@ namespace Tigerverse.UI
             else
                 root.transform.rotation = Quaternion.Euler(0, 90f, 0);
 
-            // PaperProfessor.Awake builds the body during AddComponent.
-            var prof = root.AddComponent<Tigerverse.UI.PaperProfessor>();
-
-            // Strip everything that would identify it as the professor.
-            foreach (var stripName in new[] { "Hat", "HatBrim", "Face", "BillboardLabel" })
+            var prefab = Resources.Load<GameObject>("Characters/CharacterBase");
+            if (prefab != null)
             {
-                StripChildrenNamed(root.transform, stripName);
+                var inst = Instantiate(prefab, root.transform);
+                inst.name = "CharacterBase";
+                inst.transform.localPosition = Vector3.zero;
+                inst.transform.localRotation = Quaternion.identity;
+            }
+            else
+            {
+                Debug.LogError("[ProfessorTutorial] Missing Resources/Characters/CharacterBase.prefab");
             }
 
-            // Disable the script so the dummy doesn't idle-bob / sway / nod.
-            if (prof != null) Destroy(prof);
-
             _dummy = root;
-        }
-
-        private static void StripChildrenNamed(Transform root, string name)
-        {
-            var matches = new System.Collections.Generic.List<Transform>();
-            CollectByName(root, name, matches);
-            foreach (var t in matches) Destroy(t.gameObject);
-        }
-        private static void CollectByName(Transform root, string name, System.Collections.Generic.List<Transform> outList)
-        {
-            if (root.name == name) outList.Add(root);
-            for (int i = 0; i < root.childCount; i++)
-                CollectByName(root.GetChild(i), name, outList);
         }
 
         private static Transform MakePrim(Transform parent, PrimitiveType t, Material mat, string name, Vector3 pos, Vector3 scale, Quaternion? rot = null)

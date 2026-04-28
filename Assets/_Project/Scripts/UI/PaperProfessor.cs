@@ -4,33 +4,36 @@ using UnityEngine;
 namespace Tigerverse.UI
 {
     /// <summary>
-    /// Procedural paper-craft "Professor" NPC. Built entirely out of
-    /// primitives at runtime, head sphere, body cylinder, arms, hat,
-    /// shaded paper-white. Includes a subtle idle bob and a SpeakingPulse()
-    /// animation hook the tutorial calls per spoken line so the figure
-    /// gestures while talking.
+    /// FBX-backed Professor NPC. Loads the Adventurer prefab from
+    /// Resources at Awake and drives it with parent-transform animations
+    /// (idle bob, spawn poof-in, leave wave-and-fade). Speaking pulses
+    /// trigger the animator's "Speak" trigger if present.
     /// </summary>
     [DisallowMultipleComponent]
     public class PaperProfessor : MonoBehaviour
     {
         [Header("Pose")]
-        [SerializeField] private float idleBobAmplitude = 0.015f;
+        [SerializeField] private float idleBobAmplitude = 0.012f;
         [SerializeField] private float idleBobHz        = 0.6f;
-        [SerializeField] private float idleSwayDeg      = 4f;
+        [SerializeField] private float idleSwayDeg      = 2f;
         [SerializeField] private float idleSwayHz       = 0.4f;
 
         [Header("Speaking gesture")]
-        [SerializeField] private float speakArmWaveDeg  = 32f;
-        [SerializeField] private float speakHeadNodDeg  = 6f;
         [SerializeField] private float speakDuration    = 1.0f;
 
-        private Transform _head, _body, _hat, _leftArm, _rightArm;
-        private Vector3   _baseHeadLocal;
-        private Quaternion _baseLeftArmRot, _baseRightArmRot, _baseHeadRot;
+        [Header("Model")]
+        [Tooltip("Resources/Characters prefab to load.")]
+        [SerializeField] private string prefabName = "Adventurer";
+
+        private Transform _model;
+        private Animator  _animator;
+        private Vector3   _baseModelLocalPos;
         private float     _phase;
         private float     _speakT = -10f;
         private bool      _spawning;
         private bool      _leaving;
+
+        private static readonly int SpeakHash = Animator.StringToHash("Speak");
 
         private void Awake()
         {
@@ -39,225 +42,40 @@ namespace Tigerverse.UI
 
         private void BuildBody()
         {
-            // Pivot at the figure's feet (Y=0). Total height ~1.2m.
-            //   Body cyl: y 0..0.7
-            //   Head:     y 0.78
-            //   Hat:      y 0.95
-            //   Arms:     y 0.55, sticking out
-
-            // Cache shared materials.
-            Material paperMat   = MakePaperMaterial(new Color(0.97f, 0.95f, 0.91f));
-            Material darkMat    = MakeUnlitColor(new Color(0.10f, 0.10f, 0.12f));
-            // Pastel lavender hat, much softer than the original deep wizard
-            // purple so it reads as a doodle accent rather than a costume.
-            Material accentMat  = MakeUnlitColor(new Color(0.78f, 0.72f, 0.95f));
-            Material mouthMat   = MakeUnlitColor(new Color(0.06f, 0.05f, 0.08f));
-
-            // Body lifted to sit on top of the legs. Legs hang from y=0.35
-            // (body bottom) down to y=0, so the figure stands on the ground.
-            _body = MakePrim(PrimitiveType.Cylinder, paperMat, "Body", localPos: new Vector3(0, 0.62f, 0), localScale: new Vector3(0.32f, 0.27f, 0.32f));
-
-            // Two stubby legs so the professor reads as standing instead of
-            // hovering. Mirrors the PaperHumanoid leg setup.
-            MakePrim(PrimitiveType.Cylinder, paperMat, "LegL",
-                localPos: new Vector3(-0.10f, 0.18f, 0f),
-                localScale: new Vector3(0.10f, 0.18f, 0.10f));
-            MakePrim(PrimitiveType.Cylinder, paperMat, "LegR",
-                localPos: new Vector3( 0.10f, 0.18f, 0f),
-                localScale: new Vector3(0.10f, 0.18f, 0.10f));
-
-            _head = MakePrim(PrimitiveType.Sphere, paperMat, "Head", localPos: new Vector3(0, 1.10f, 0), localScale: new Vector3(0.46f, 0.46f, 0.46f));
-            _baseHeadLocal = _head.localPosition;
-            _baseHeadRot   = _head.localRotation;
-
-            // Wizard hat — shorter cone so it reads as a beanie/short cap
-            // rather than a tall sorcerer hat. Sits just above the head.
-            _hat = MakePrim(PrimitiveType.Cylinder, accentMat, "Hat", localPos: new Vector3(0, 1.40f, 0), localScale: new Vector3(0.28f, 0.13f, 0.28f));
-            _hat.SetParent(_head, worldPositionStays: true);
-
-            // Hat brim (flat cylinder underneath).
-            var brim = MakePrim(PrimitiveType.Cylinder, accentMat, "HatBrim", localPos: new Vector3(0, 1.26f, 0), localScale: new Vector3(0.50f, 0.014f, 0.50f));
-            brim.SetParent(_head, worldPositionStays: true);
-
-            // Face: hand-drawn doodle face on a quad pinned to the front of
-            // the head sphere. Replaces the old eye + mouth primitives.
-            BuildFaceQuad(_head);
-
-            // Floating "Professor" name tag, sits above the (now shorter)
-            // hat. Billboards to the local camera each frame.
-            Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 1.75f);
-
-            // Arms — shoulders moved up to match the lifted body.
-            _leftArm  = MakeArm(name: "ArmL", paperMat, shoulder: new Vector3(-0.20f, 0.82f, 0f), tilt: 18f);
-            _rightArm = MakeArm(name: "ArmR", paperMat, shoulder: new Vector3( 0.20f, 0.82f, 0f), tilt: -18f);
-            _baseLeftArmRot  = _leftArm.localRotation;
-            _baseRightArmRot = _rightArm.localRotation;
-        }
-
-        private Transform MakeArm(string name, Material mat, Vector3 shoulder, float tilt)
-        {
-            // Pivot GO at the shoulder. The mesh hangs DOWN from there so
-            // rotating the pivot rotates the arm naturally.
-            var pivot = new GameObject(name);
-            pivot.transform.SetParent(transform, worldPositionStays: false);
-            pivot.transform.localPosition = shoulder;
-            pivot.transform.localRotation = Quaternion.Euler(0, 0, tilt);
-
-            var sleeve = MakePrim(PrimitiveType.Cube, mat, name + "_Sleeve",
-                localPos: new Vector3(0, -0.18f, 0),
-                localScale: new Vector3(0.08f, 0.30f, 0.08f),
-                parent: pivot.transform);
-
-            return pivot.transform;
-        }
-
-        private Transform MakePrim(PrimitiveType type, Material mat, string name, Vector3 localPos, Vector3 localScale, Transform parent = null)
-        {
-            var go = GameObject.CreatePrimitive(type);
-            go.name = name;
-            var col = go.GetComponent<Collider>();
-            if (col != null)
+            var prefab = Resources.Load<GameObject>("Characters/" + prefabName);
+            if (prefab == null)
             {
-                if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+                Debug.LogError($"[PaperProfessor] Missing Resources/Characters/{prefabName}.prefab");
+                return;
             }
-            go.transform.SetParent(parent != null ? parent : transform, worldPositionStays: false);
-            go.transform.localPosition = localPos;
-            go.transform.localScale    = localScale;
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            return go.transform;
-        }
+            var inst = Instantiate(prefab, transform);
+            inst.name = prefabName;
+            inst.transform.localPosition = Vector3.zero;
+            inst.transform.localRotation = Quaternion.identity;
+            _model = inst.transform;
+            _baseModelLocalPos = _model.localPosition;
+            _animator = inst.GetComponentInChildren<Animator>();
 
-        private static Material MakePaperMaterial(Color c)
-        {
-            var sh = Shader.Find("Universal Render Pipeline/Lit");
-            if (sh == null) sh = Shader.Find("Standard");
-            var mat = new Material(sh);
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-            else mat.color = c;
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.05f);
-            // Try to attach the shared paper texture for fibre detail.
-            var paper = LoadPaperTex("Color");
-            if (paper != null)
-            {
-                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", paper);
-                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", paper);
-            }
-            return mat;
-        }
-
-        private static Material MakeUnlitColor(Color c)
-        {
-            var sh = Shader.Find("Universal Render Pipeline/Unlit");
-            if (sh == null) sh = Shader.Find("Unlit/Color");
-            var mat = new Material(sh);
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-            else mat.color = c;
-            return mat;
-        }
-
-        // Doodle face used on the head sphere. Loaded once and shared.
-        private static Material _faceMat;
-        private static void BuildFaceQuad(Transform head)
-        {
-            if (head == null) return;
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = "Face";
-            var col = quad.GetComponent<Collider>();
-            if (col != null) { if (Application.isPlaying) Destroy(col); else DestroyImmediate(col); }
-            quad.transform.SetParent(head, worldPositionStays: false);
-            // The original eyes/mouth were at head-local -Z, so this project's
-            // convention treats -Z as the head's "front". A default Quad mesh
-            // lies in XY with normal +Z, so when placed at z=-0.51 the visible
-            // surface naturally faces back toward +Z (the camera looking at
-            // the professor from behind it in head-local terms). No rotation
-            // needed; an earlier 180° spin had it pointing backwards.
-            quad.transform.localPosition = new Vector3(0f, 0.05f, -0.51f);
-            quad.transform.localRotation = Quaternion.identity;
-            quad.transform.localScale = new Vector3(0.42f, 0.5f, 1f);
-            quad.GetComponent<Renderer>().sharedMaterial = MakeFaceMaterial();
-        }
-
-        private static Material MakeFaceMaterial()
-        {
-            if (_faceMat != null) return _faceMat;
-            // Use the legacy Unlit/Transparent shader: it's hardcoded to alpha
-            // blend, so the face PNG's transparent areas reliably show the
-            // head sphere through, no shader-variant gymnastics needed. The
-            // earlier URP/Unlit + SetFloat("_Surface", 1) approach silently
-            // rendered opaque (you'd see a black rectangle around the face)
-            // because the transparent variant gets stripped at build.
-            var sh = Shader.Find("Unlit/Transparent");
-            if (sh == null) sh = Shader.Find("Sprites/Default");
-            _faceMat = new Material(sh);
-            var face = Resources.Load<Texture2D>("face");
-            if (face != null)
-            {
-                _faceMat.mainTexture = face;
-                if (_faceMat.HasProperty("_MainTex")) _faceMat.SetTexture("_MainTex", face);
-                if (_faceMat.HasProperty("_BaseMap")) _faceMat.SetTexture("_BaseMap", face);
-            }
-            if (_faceMat.HasProperty("_Color")) _faceMat.SetColor("_Color", Color.white);
-            if (_faceMat.HasProperty("_BaseColor")) _faceMat.SetColor("_BaseColor", Color.white);
-            return _faceMat;
-        }
-
-        private static Texture2D[] _allPaper;
-        private static Texture2D LoadPaperTex(string suffix)
-        {
-            if (_allPaper == null) _allPaper = Resources.LoadAll<Texture2D>("PaperTextures");
-            foreach (var t in _allPaper)
-            {
-                if (t == null) continue;
-                if (t.name.IndexOf(suffix, System.StringComparison.OrdinalIgnoreCase) >= 0) return t;
-            }
-            return null;
+            // Floating "Professor" tag, sits above the figure's head.
+            Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 2.15f);
         }
 
         private void Update()
         {
             _phase += Time.deltaTime;
 
-            // Suspend idle bob / sway / speaking pulses while a spawn or leave
-            // animation is driving the figure directly.
             if (_spawning || _leaving) return;
+            if (_model == null) return;
 
             // Idle sway (whole body).
             float sway = Mathf.Sin(_phase * idleSwayHz * Mathf.PI * 2f) * idleSwayDeg;
             transform.localRotation = Quaternion.Euler(0, 0, sway);
 
-            // Idle bob (head only).
-            if (_head != null)
-            {
-                Vector3 hp = _baseHeadLocal;
-                hp.y += Mathf.Sin(_phase * idleBobHz * Mathf.PI * 2f) * idleBobAmplitude;
-                _head.localPosition = hp;
-            }
-
-            // Speaking pulse: animate arms + head nodding.
-            float speakElapsed = Time.time - _speakT;
-            if (speakElapsed >= 0f && speakElapsed < speakDuration && _leftArm != null && _rightArm != null && _head != null)
-            {
-                float k = Mathf.Clamp01(speakElapsed / speakDuration);
-                // Smooth in-out window so we don't snap on stop.
-                float window = Mathf.Sin(k * Mathf.PI);
-                // Slowed from 6Hz to ~1.6Hz so the gestures read as
-                // calm/lecturing instead of frantic flailing.
-                float beat = Mathf.Sin(speakElapsed * 1.6f * Mathf.PI) * window;
-
-                // Halve the wave amplitude on top of the slower beat for an
-                // even calmer overall motion.
-                float amp = speakArmWaveDeg * 0.5f;
-                _rightArm.localRotation = _baseRightArmRot * Quaternion.Euler(beat * amp, 0, 0);
-                _leftArm.localRotation  = _baseLeftArmRot  * Quaternion.Euler(beat * amp * 0.5f, 0, 0);
-
-                _head.localRotation = _baseHeadRot * Quaternion.Euler(Mathf.Abs(beat) * speakHeadNodDeg * 0.5f, 0, 0);
-            }
-            else if (_leftArm != null && _rightArm != null && _head != null)
-            {
-                _leftArm.localRotation  = _baseLeftArmRot;
-                _rightArm.localRotation = _baseRightArmRot;
-                _head.localRotation     = _baseHeadRot;
-            }
+            // Idle bob — applied to the model so it stays pinned at the
+            // pivot when scaled by the spawn animation.
+            Vector3 hp = _baseModelLocalPos;
+            hp.y += Mathf.Sin(_phase * idleBobHz * Mathf.PI * 2f) * idleBobAmplitude;
+            _model.localPosition = hp;
         }
 
         /// <summary>
@@ -267,29 +85,32 @@ namespace Tigerverse.UI
         {
             _speakT = Time.time;
             if (duration > 0f) speakDuration = duration;
+            if (_animator != null && _animator.runtimeAnimatorController != null)
+            {
+                foreach (var p in _animator.parameters)
+                {
+                    if (p.nameHash == SpeakHash)
+                    {
+                        _animator.SetTrigger(SpeakHash);
+                        break;
+                    }
+                }
+            }
         }
 
         /// <summary>
         /// Poof-in spawn. Scales up from 0 with a tiny elastic overshoot,
-        /// rises from y=-0.3 to y=0, waves arms once like a "ta-da", and
-        /// emits a small white confetti puff at floor level.
+        /// rises from y=-0.3 to y=0, and emits a small white confetti puff.
         /// </summary>
         public IEnumerator PlaySpawnAnimation()
         {
             _spawning = true;
 
-            // Cache the starting transform so we end exactly where we began.
             Vector3 endPos = transform.localPosition;
             Vector3 startPos = endPos + new Vector3(0f, -0.3f, 0f);
             transform.localPosition = startPos;
             transform.localScale    = Vector3.zero;
-            transform.localRotation = Quaternion.identity;
 
-            // Reset arm rotations to their bind so we drive them cleanly.
-            if (_leftArm  != null) _leftArm.localRotation  = _baseLeftArmRot;
-            if (_rightArm != null) _rightArm.localRotation = _baseRightArmRot;
-
-            // Confetti puff at floor level (world position).
             SpawnConfettiPuff(transform.position, new Color(1f, 1f, 1f));
 
             const float dur = 1.2f;
@@ -299,13 +120,10 @@ namespace Tigerverse.UI
                 t += Time.deltaTime;
                 float k = Mathf.Clamp01(t / dur);
 
-                // Elastic-ish ease: overshoot at ~0.7 and settle to 1.0.
-                // 0..0.7 -> 0..1.1, 0.7..1.0 -> 1.1..1.0
                 float scale;
                 if (k < 0.7f)
                 {
                     float a = k / 0.7f;
-                    // ease-out cubic up to 1.1
                     float e = 1f - Mathf.Pow(1f - a, 3f);
                     scale = e * 1.1f;
                 }
@@ -316,85 +134,60 @@ namespace Tigerverse.UI
                 }
                 transform.localScale = new Vector3(scale, scale, scale);
 
-                // Rise.
                 float riseK = 1f - Mathf.Pow(1f - k, 2f);
                 transform.localPosition = Vector3.Lerp(startPos, endPos, riseK);
-
-                // Ta-da arm wave: lift both arms, peak around mid, return.
-                float wave = Mathf.Sin(k * Mathf.PI);
-                if (_leftArm != null)
-                    _leftArm.localRotation  = _baseLeftArmRot  * Quaternion.Euler(0f, 0f,  60f * wave);
-                if (_rightArm != null)
-                    _rightArm.localRotation = _baseRightArmRot * Quaternion.Euler(0f, 0f, -60f * wave);
 
                 yield return null;
             }
 
-            // Snap to the bind pose.
             transform.localScale    = Vector3.one;
             transform.localPosition = endPos;
-            if (_leftArm  != null) _leftArm.localRotation  = _baseLeftArmRot;
-            if (_rightArm != null) _rightArm.localRotation = _baseRightArmRot;
 
             _spawning = false;
         }
 
         /// <summary>
-        /// Wave-and-vanish leave. Right arm waves like a goodbye, then the
-        /// figure scales down ~30%, drifts upward and fades alpha to zero
-        /// (with a confetti puff). Caller should Destroy the GameObject after.
+        /// Wave-and-vanish leave. Triggers the "Speak" / wave anim if the
+        /// animator has it, then scales down ~30%, drifts upward and fades
+        /// alpha to zero (with a confetti puff).
         /// </summary>
         public IEnumerator PlayLeaveAnimation()
         {
             _leaving = true;
 
-            // --- 1. Friendly wave (right arm up + side-to-side oscillation). ---
+            // 1. Friendly wave via animator if available.
+            if (_animator != null && _animator.runtimeAnimatorController != null)
+            {
+                foreach (var p in _animator.parameters)
+                {
+                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); break; }
+                }
+            }
             const float waveDur = 0.7f;
             float t = 0f;
             while (t < waveDur)
             {
                 t += Time.deltaTime;
-                float k = Mathf.Clamp01(t / waveDur);
-                // Ease-in then hold for the lift.
-                float lift = Mathf.SmoothStep(0f, 1f, Mathf.Min(1f, k * 1.4f));
-                // Side-to-side oscillation, ~3 cycles across the duration.
-                float osc  = Mathf.Sin(k * Mathf.PI * 6f) * 25f;
-
-                if (_rightArm != null)
-                {
-                    // Raise ~120 degrees on Z (arm pivots from shoulder, +Z lifts it up
-                    // on the right side). Add Y oscillation for the side-to-side wave.
-                    _rightArm.localRotation = _baseRightArmRot
-                        * Quaternion.Euler(0f, osc, -120f * lift);
-                }
-                if (_leftArm != null)
-                {
-                    _leftArm.localRotation = _baseLeftArmRot;
-                }
                 yield return null;
             }
 
-            // --- 2. Cache per-renderer cloned materials so we can fade alpha. ---
+            // 2. Cache per-renderer cloned materials so we can fade alpha.
             var rends = GetComponentsInChildren<Renderer>(true);
             var mats  = new Material[rends.Length];
             for (int i = 0; i < rends.Length; i++)
             {
                 if (rends[i] == null) continue;
-                // r.material auto-clones, so we don't mutate the shared paper mat.
                 mats[i] = rends[i].material;
                 TryMakeTransparent(mats[i]);
             }
 
-            // --- 3. Confetti puff at the figure's position. ---
             SpawnConfettiPuff(transform.position + Vector3.up * 0.6f, new Color(1f, 1f, 1f));
 
-            // --- 4. Fade + scale-down + drift-up. ---
             Vector3 startScale = transform.localScale;
             Vector3 endScale   = startScale * 0.7f;
             Vector3 startPos   = transform.localPosition;
             Vector3 endPos     = startPos + new Vector3(0f, 0.25f, 0f);
 
-            // Capture each material's starting color so we can lerp alpha cleanly.
             var startColors = new Color[mats.Length];
             for (int i = 0; i < mats.Length; i++)
             {
@@ -424,40 +217,20 @@ namespace Tigerverse.UI
                     else mats[i].color = c;
                 }
 
-                // Hold the wave overhead while fading (tapers off quickly).
-                if (_rightArm != null)
-                {
-                    float holdLift = 1f - k;
-                    _rightArm.localRotation = _baseRightArmRot
-                        * Quaternion.Euler(0f, 0f, -120f * holdLift);
-                }
-
                 yield return null;
             }
 
-            // Final state: invisible. Hide all renderers as a hard guarantee in
-            // case alpha didn't actually go transparent on opaque-pipeline mats.
             for (int i = 0; i < rends.Length; i++)
             {
                 if (rends[i] != null) rends[i].enabled = false;
             }
-
-            // Don't Destroy ourselves, caller does that.
         }
 
-        /// <summary>
-        /// Try to flip a URP/Lit (or Standard) material into transparent
-        /// blend so an alpha lerp is visible. Best-effort: if none of the
-        /// expected properties exist we just leave it; the leave animation
-        /// also disables renderers at the end as a fallback.
-        /// </summary>
         private static void TryMakeTransparent(Material m)
         {
             if (m == null) return;
-
-            // URP Lit / Unlit: _Surface 0=Opaque, 1=Transparent.
             if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
-            if (m.HasProperty("_Blend"))   m.SetFloat("_Blend", 0f);   // Alpha
+            if (m.HasProperty("_Blend"))   m.SetFloat("_Blend", 0f);
             if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
             if (m.HasProperty("_DstBlend")) m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
             if (m.HasProperty("_ZWrite"))   m.SetFloat("_ZWrite", 0f);
@@ -472,24 +245,14 @@ namespace Tigerverse.UI
             m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
         }
 
-        /// <summary>
-        /// Procedural one-shot particle puff, small white cubes spraying
-        /// outward. Pattern matches ProfessorTutorial.SpawnLightningEffect.
-        /// </summary>
         private void SpawnConfettiPuff(Vector3 worldPos, Color tint)
         {
             var go = new GameObject("PaperConfettiFx");
-            // Detach from this transform, we may be destroyed soon, and the
-            // FX should outlive us long enough to play out.
             go.transform.position = worldPos;
 
             var ps  = go.AddComponent<ParticleSystem>();
             var psr = go.GetComponent<ParticleSystemRenderer>();
 
-            // ParticleSystem auto-plays with default config the moment it's
-            // added. Setting `main.duration` after that throws "Setting the
-            // duration while system is still playing is not supported." Stop
-            // and clear before reconfiguring.
             ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
             var sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
@@ -498,9 +261,6 @@ namespace Tigerverse.UI
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
             else mat.color = tint;
             psr.sharedMaterial = mat;
-
-            // Use the default billboard render mode, small white squares look
-            // like paper confetti without needing a custom mesh.
             psr.renderMode = ParticleSystemRenderMode.Billboard;
 
             var main = ps.main;
