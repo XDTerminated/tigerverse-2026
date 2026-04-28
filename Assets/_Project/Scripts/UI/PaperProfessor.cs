@@ -148,6 +148,7 @@ namespace Tigerverse.UI
                     if (p.nameHash == SpeakHash)
                     {
                         _animator.SetTrigger(SpeakHash);
+                        ClapSfx.Play(transform.position + Vector3.up * 1.4f);
                         break;
                     }
                 }
@@ -207,7 +208,7 @@ namespace Tigerverse.UI
             {
                 foreach (var p in _animator.parameters)
                 {
-                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); break; }
+                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); ClapSfx.Play(transform.position + Vector3.up * 1.4f); break; }
                 }
             }
         }
@@ -226,7 +227,7 @@ namespace Tigerverse.UI
             {
                 foreach (var p in _animator.parameters)
                 {
-                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); break; }
+                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); ClapSfx.Play(transform.position + Vector3.up * 1.4f); break; }
                 }
             }
             const float waveDur = 0.7f;
