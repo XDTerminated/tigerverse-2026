@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Threading.Tasks;
 using Tigerverse.Combat;
@@ -123,10 +124,15 @@ namespace Tigerverse.Core
             Task<bool> t = runner.CreateRoom(sessionCode);
             yield return new WaitUntil(() => t.IsCompleted);
 
-            if (!t.Result)
-            {
+            // Read t.Result inside try/catch — a faulted Task re-throws on
+            // Result access, which would otherwise terminate the coroutine
+            // and break Photon room creation entirely. Faulted tasks now
+            // surface as a logged exception with HTTP polling continuing.
+            bool createOk = false;
+            try { createOk = t.Result; }
+            catch (Exception e) { Debug.LogError($"[GameStateManager] CreateRoom threw: {e.Message}"); }
+            if (!createOk)
                 Debug.LogWarning("[GameStateManager] CreateRoom failed, HTTP polling continues anyway.");
-            }
         }
 
         private IEnumerator JoinFlow()
@@ -146,10 +152,11 @@ namespace Tigerverse.Core
             Task<bool> t = runner.JoinRoom(sessionCode);
             yield return new WaitUntil(() => t.IsCompleted);
 
-            if (!t.Result)
-            {
+            bool joinOk = false;
+            try { joinOk = t.Result; }
+            catch (Exception e) { Debug.LogError($"[GameStateManager] JoinRoom threw: {e.Message}"); }
+            if (!joinOk)
                 Debug.LogWarning("[GameStateManager] JoinRoom failed, HTTP polling continues anyway.");
-            }
         }
 
         private void BeginDrawWait()

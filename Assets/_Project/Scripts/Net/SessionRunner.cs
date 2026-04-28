@@ -112,18 +112,23 @@ namespace Tigerverse.Net
                 return false;
             }
 
-            // Only the Shared-mode master client (initial host) spawns the singleton SessionManager.
+            // Only the Shared-mode master client (initial host) spawns the
+            // singleton SessionManager. Spawn calls are wrapped in try/catch
+            // so a single bad prefab (e.g. unbaked Fusion prefab table) can't
+            // tear the whole connection down — that left the Photon room in
+            // a half-initialised state, joiners silently failed to find the
+            // host's room, and the host saw "waiting for opponent" forever.
             if (Runner.IsSharedModeMasterClient && sessionManagerPrefab != null)
             {
-                var no = sessionManagerPrefab.GetComponent<NetworkObject>();
-                if (no != null)
+                try
                 {
-                    Runner.Spawn(no, Vector3.zero, Quaternion.identity, Runner.LocalPlayer);
+                    var no = sessionManagerPrefab.GetComponent<NetworkObject>();
+                    if (no != null)
+                        Runner.Spawn(no, Vector3.zero, Quaternion.identity, Runner.LocalPlayer);
+                    else
+                        Debug.LogError("[SessionRunner] sessionManagerPrefab has no NetworkObject component.");
                 }
-                else
-                {
-                    Debug.LogError("[SessionRunner] sessionManagerPrefab has no NetworkObject component.");
-                }
+                catch (Exception e) { Debug.LogError($"[SessionRunner] SessionManager spawn failed: {e.Message}"); }
             }
             else if (Runner.IsSharedModeMasterClient && sessionManagerPrefab == null)
             {
@@ -138,20 +143,22 @@ namespace Tigerverse.Net
             // within a few ticks of spawn.
             if (Runner.IsSharedModeMasterClient && battleManagerPrefab != null)
             {
-                var no = battleManagerPrefab.GetComponent<NetworkObject>();
-                if (no != null)
+                try
                 {
-                    Runner.Spawn(no, Vector3.zero, Quaternion.identity, Runner.LocalPlayer);
+                    var no = battleManagerPrefab.GetComponent<NetworkObject>();
+                    if (no != null)
+                        Runner.Spawn(no, Vector3.zero, Quaternion.identity, Runner.LocalPlayer);
+                    else
+                        Debug.LogError("[SessionRunner] battleManagerPrefab has no NetworkObject component.");
                 }
-                else
-                {
-                    Debug.LogError("[SessionRunner] battleManagerPrefab has no NetworkObject component.");
-                }
+                catch (Exception e) { Debug.LogError($"[SessionRunner] BattleManager spawn failed: {e.Message}. If this says 'baked with a guid X but failed to be translated into a prefab id', run Tools → Fusion → Rebuild Prefab Table."); }
             }
             else if (Runner.IsSharedModeMasterClient && battleManagerPrefab == null)
             {
                 Debug.LogWarning("[SessionRunner] battleManagerPrefab unassigned, BattleManager will NOT spawn and voice combat will be a no-op. Drag the prefab into the inspector field on Bootstrap.");
             }
+
+            Debug.Log($"[SessionRunner] StartShared finished. SessionName='{Runner.SessionInfo?.Name}' isMaster={Runner.IsSharedModeMasterClient} localPlayer={Runner.LocalPlayer} activePlayers={(Runner.ActivePlayers != null ? System.Linq.Enumerable.Count(Runner.ActivePlayers) : 0)}");
 
                 try { OnRunnerConnected?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
                 return true;
