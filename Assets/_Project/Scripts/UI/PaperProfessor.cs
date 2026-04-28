@@ -144,6 +144,16 @@ namespace Tigerverse.UI
             transform.localPosition = endPos;
 
             _spawning = false;
+
+            // Greeting wave once we land — fires the animator's "Speak"
+            // (mapped to Wave / Interact in each character's controller).
+            if (_animator != null && _animator.runtimeAnimatorController != null)
+            {
+                foreach (var p in _animator.parameters)
+                {
+                    if (p.nameHash == SpeakHash) { _animator.SetTrigger(SpeakHash); break; }
+                }
+            }
         }
 
         /// <summary>
