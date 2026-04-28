@@ -18,6 +18,14 @@ namespace Tigerverse.UI
         [SerializeField] private float idleSwayDeg      = 2f;
         [SerializeField] private float idleSwayHz       = 0.4f;
 
+        [Header("Look at player")]
+        [Tooltip("If true, smoothly rotates the body to face the local camera with eased delay.")]
+        [SerializeField] private bool  lookAtPlayer      = true;
+        [Tooltip("Approximate time (seconds) for SmoothDamp to reach the player's direction. Higher = lazier follow, lower = snappier.")]
+        [SerializeField] private float lookAtSmoothTime  = 0.55f;
+        [Tooltip("Yaw delta (degrees) the player can drift off the body's facing before we start rotating. Stops the Professor from twitching when the player makes tiny head moves.")]
+        [SerializeField] private float lookAtDeadzoneDeg = 8f;
+
         [Header("Speaking gesture")]
         [SerializeField] private float speakDuration    = 1.0f;
 
@@ -33,11 +41,25 @@ namespace Tigerverse.UI
         private bool      _spawning;
         private bool      _leaving;
 
+        // Eased look-at-player state.
+        private Camera    _cam;
+        private float     _currentYaw;
+        private float     _targetYaw;
+        private float     _yawVel;
+        private bool      _yawInitialised;
+        private float     _baseLocalYaw;
+
         private static readonly int SpeakHash = Animator.StringToHash("Speak");
 
         private void Awake()
         {
             BuildBody();
+
+            // Snapshot the local yaw set by whoever spawned us (e.g.
+            // ProfessorTutorial.BuildScene calls LookRotation(_stageForward)).
+            // We use this as the rest yaw when look-at-player is disabled.
+            _baseLocalYaw = transform.localRotation.eulerAngles.y;
+            _currentYaw   = _baseLocalYaw;
         }
 
         private void BuildBody()
@@ -67,9 +89,43 @@ namespace Tigerverse.UI
             if (_spawning || _leaving) return;
             if (_model == null) return;
 
-            // Idle sway (whole body).
+            // Update target yaw to face the player. We compute a *world* yaw
+            // pointing from us to the camera, then convert to the parent's
+            // local space so SmoothDamp drives a stable local-space angle.
+            // SmoothDampAngle gives the natural ease-in / ease-out feel —
+            // accelerates from rest, decelerates as it nears the target —
+            // so the body never snaps. A small deadzone (lookAtDeadzoneDeg)
+            // suppresses twitchy micro-corrections from the player's tiny
+            // head movements.
+            if (lookAtPlayer)
+            {
+                if (_cam == null) _cam = Camera.main;
+                if (_cam != null)
+                {
+                    Vector3 toCam = _cam.transform.position - transform.position;
+                    toCam.y = 0f;
+                    if (toCam.sqrMagnitude > 1e-4f)
+                    {
+                        float worldYaw  = Quaternion.LookRotation(toCam, Vector3.up).eulerAngles.y;
+                        float parentYaw = transform.parent != null ? transform.parent.eulerAngles.y : 0f;
+                        float newTarget = Mathf.DeltaAngle(parentYaw, worldYaw);
+
+                        if (!_yawInitialised) { _targetYaw = newTarget; _currentYaw = newTarget; _yawInitialised = true; }
+                        else if (Mathf.Abs(Mathf.DeltaAngle(_targetYaw, newTarget)) > lookAtDeadzoneDeg)
+                            _targetYaw = newTarget;
+                    }
+                }
+                _currentYaw = Mathf.SmoothDampAngle(_currentYaw, _targetYaw, ref _yawVel, lookAtSmoothTime);
+            }
+            else
+            {
+                _currentYaw = _baseLocalYaw;
+            }
+
+            // Idle sway (whole body) — Z-axis tilt layered on top of the
+            // look-at yaw so the Professor still has a gentle character.
             float sway = Mathf.Sin(_phase * idleSwayHz * Mathf.PI * 2f) * idleSwayDeg;
-            transform.localRotation = Quaternion.Euler(0, 0, sway);
+            transform.localRotation = Quaternion.Euler(0, _currentYaw, sway);
 
             // Idle bob — applied to the model so it stays pinned at the
             // pivot when scaled by the spawn animation.

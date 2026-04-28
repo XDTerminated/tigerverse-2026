@@ -29,7 +29,7 @@ namespace Tigerverse.Core
 
         [SerializeField] private SessionApiClient apiClient;
 
-        [Tooltip("If true, show a 'Start Tutorial' button next to the egg. The Professor Hooten tutorial spawns when the player presses it.")]
+        [Tooltip("If true, show a 'Start Tutorial' button next to the egg. The Professor Pastel tutorial spawns when the player presses it.")]
         [SerializeField] private bool spawnTutorial = true;
 
         [Tooltip("If true, only spawn the tutorial+button for the player whose caster index matches this slot. Set to false during solo dev testing so it spawns for both pivots.")]
@@ -164,12 +164,11 @@ namespace Tigerverse.Core
 
             StartCoroutine(_egg.PlayPopInAnimation());
 
-            // Spawn the Start-Tutorial button next to the egg, but only for
-            // the local player (each headset shows its own button privately).
-            if (spawnTutorial && IsLocalCaster())
-            {
-                SpawnStartButton();
-            }
+            // In-lobby Start-Tutorial button is intentionally disabled — the
+            // tutorial now lives on the title screen and is mandatory before
+            // PLAY ungates. By the time a player reaches the lobby they've
+            // already done it. (spawnTutorial / SpawnStartButton kept around
+            // in case we want a per-egg practice replay later.)
 
             Debug.Log($"[SlotPresenter] Slot {slotIndex} egg spawned for '{data.name}' under '{transform.name}'. StartButton={(_startButton != null)}");
         }

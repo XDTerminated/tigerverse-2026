@@ -36,6 +36,10 @@ namespace Tigerverse.UI
         [SerializeField] private string borrowedScribbleGlbUrl = "https://ueggfh303j.ufs.sh/f/hqoaI3f7pqQl6koHkKXdhzSPI8ykOc45FrwKeWNpJfbAYMB6";
         [Tooltip("How long the player has to say THUNDER BOLT before the dummy 'wins' anyway and we move on.")]
         [SerializeField] private float practiceListenWindowSec = 12f;
+        [Tooltip("Vertical offset added to the practice dummy spawn so the FBX (whose pivot sits at the model's centre) stands on the floor instead of half-buried in it.")]
+        [SerializeField] private float dummyVerticalOffset = 0.9f;
+        [Tooltip("Vertical offset added to the borrowed scribble after auto-scaling so it floats at chest height instead of clipping the floor.")]
+        [SerializeField] private float borrowedScribbleVerticalOffset = 0.7f;
 
         [Header("Behaviour")]
         [SerializeField] private bool allowQandA = true;
@@ -90,7 +94,7 @@ namespace Tigerverse.UI
         private const string FallbackVoice = "21m00Tcm4TlvDq8ikWAM"; // Rachel — works on every ElevenLabs free key
 
         private const string SystemPrompt =
-            "You are Professor Hooten, a kindly elderly paper-craft wizard who teaches new trainers " +
+            "You are Professor Pastel, a kindly elderly paper-craft wizard who teaches new trainers " +
             "the world of Scribble Showdown, a turn-based VR battle game where two players draw monsters " +
             "that come to life as paper-craft creatures and fight each other. " +
             "Combat is turn-based and every attack is voice-activated. The player says the move name out loud " +
@@ -102,7 +106,7 @@ namespace Tigerverse.UI
         // where we trigger the practice listening window.
         private static readonly string[] ScriptedLines =
         {
-            "Welcome to the world of Scribble Showdown! I'm Professor Hooten.",
+            "Welcome to the world of Scribble Showdown! I'm Professor Pastel.",
             "Your egg is still hatching, so why don't I lend you one of my old scribbles to teach you the ropes.",
             "Combat in this world is turn based, so you and your opponent take turns making a move.",
             "And here's the magical part. Every attack is voice activated. You simply say the move out loud.",
@@ -113,6 +117,14 @@ namespace Tigerverse.UI
         private const int LineIdx_LendScribble = 1;
         private const int LineIdx_PracticeCue  = 4;
         private const int LineIdx_Wrapup       = 5;
+
+        /// <summary>
+        /// Fires once when the tutorial's GameObject is destroyed (whether via
+        /// Stop, BeginLeave's natural finish, or external teardown). The title
+        /// screen subscribes to this so it can mark the tutorial complete and
+        /// ungray the PLAY button.
+        /// </summary>
+        public event Action OnTutorialFinished;
 
         // ─── Lifecycle ──────────────────────────────────────────────────
         private void Awake()
@@ -165,6 +177,11 @@ namespace Tigerverse.UI
             }
             _dummy = null;
             _borrowedScribble = null;
+
+            // Notify any listeners (TitleScreen) that the tutorial is finished.
+            // Fires for every teardown path: graceful BeginLeave, abrupt Stop,
+            // or scene-load destruction.
+            try { OnTutorialFinished?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
         }
 
         public void Stop()
@@ -259,7 +276,7 @@ namespace Tigerverse.UI
                 // LateUpdate to face the player.
                 var dialogueGo = new GameObject("ProfessorDialogue");
                 _dialogueBox = dialogueGo.AddComponent<RPGDialogueBox>();
-                _dialogueBox.Initialize(profGo.transform, "Professor Hooten",
+                _dialogueBox.Initialize(profGo.transform, "Professor Pastel",
                     Resources.Load<Texture2D>("face"));
                 _dialogueBox.Hide();
             }
@@ -411,8 +428,10 @@ namespace Tigerverse.UI
             // Sit BETWEEN the Professor and the dummy along the depth axis,
             // 0.5m further from the player than the Professor. (_stageForward
             // points stage->player, so subtracting it pushes us away from
-            // the player toward the dummy.)
-            container.transform.position = _stageCenter - _stageForward * 0.5f;
+            // the player toward the dummy.) The vertical offset lifts the
+            // model off the floor — _stageCenter sits at floor height so the
+            // GLB pivot would otherwise spawn the body half-buried.
+            container.transform.position = _stageCenter - _stageForward * 0.5f + Vector3.up * borrowedScribbleVerticalOffset;
             // The scribble is the "attacker" in this trio — make it face
             // AWAY from the player toward the dummy further forward.
             Vector3 awayFromPlayer = -_stageForward;
@@ -437,6 +456,7 @@ namespace Tigerverse.UI
             catch (Exception e) { Debug.LogException(e); }
 
             _borrowedScribble = container;
+            Debug.Log($"[ProfessorTutorial] Borrowed scribble spawned at {container.transform.position} scale={container.transform.localScale.x:F2} childCount={container.transform.childCount}");
         }
 
         private void SpawnDummy()
@@ -446,7 +466,10 @@ namespace Tigerverse.UI
             // further from the player than the Professor.
             var root = new GameObject("PracticeDummy");
             root.transform.SetParent(transform, worldPositionStays: true);
-            root.transform.position = _stageCenter - _stageForward * 1.7f;
+            // CharacterBase FBX has its pivot at the model centre, not at the
+            // feet, so without the dummyVerticalOffset bump the dummy renders
+            // half-buried in the floor.
+            root.transform.position = _stageCenter - _stageForward * 1.7f + Vector3.up * dummyVerticalOffset;
             if (_stageForward.sqrMagnitude > 1e-4f)
                 root.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
             else

@@ -347,7 +347,7 @@ namespace Tigerverse.EditorTools
             pivot.transform.position = spawnPos;
             pivot.AddComponent<Tigerverse.UI.ProfessorTutorial>();
             Selection.activeObject = pivot;
-            Debug.Log("[Tigerverse/Dev] Tutorial pivot spawned. Listen for Professor Hooten, he'll talk through the script then enter Q&A. Press right grip (or Spacebar) to ask a question.");
+            Debug.Log("[Tigerverse/Dev] Tutorial pivot spawned. Listen for Professor Pastel, he'll talk through the script then enter Q&A. Press right grip (or Spacebar) to ask a question.");
         }
 
         [MenuItem("Tigerverse/Dev -> Spawn Tutorial + Egg (full sim)")]

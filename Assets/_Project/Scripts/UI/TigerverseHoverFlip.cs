@@ -50,7 +50,20 @@ namespace Tigerverse.UI
             Refresh();
             Apply();
         }
-        private void OnEnable() => Apply();
+        private void OnEnable()
+        {
+            // Reset hover/press state on every re-enable. If the button got
+            // deactivated mid-click (e.g. TitleScreen hides the menu in
+            // response to OnClick before OnPointerUp can fire), _pressed
+            // would stay true and the foreground would render in hover-color
+            // (invisible white-on-white) the next time the menu reappears.
+            // Worst case the player has to wave their controller in and out
+            // once to register a fresh hover — fine trade for not having a
+            // stuck-white button.
+            _hovered = false;
+            _pressed = false;
+            Apply();
+        }
 
         public void OnPointerEnter(PointerEventData e) { _hovered = true; Apply(); }
         public void OnPointerExit(PointerEventData e) { _hovered = false; Apply(); }
