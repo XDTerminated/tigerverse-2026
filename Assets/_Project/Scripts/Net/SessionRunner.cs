@@ -22,6 +22,9 @@ namespace Tigerverse.Net
         [Tooltip("Prefab containing the SessionManager NetworkBehaviour. Drag the SessionManager.prefab here.")]
         public GameObject sessionManagerPrefab;
 
+        [Tooltip("Prefab containing the BattleManager NetworkBehaviour. Drag the BattleManager.prefab here. Without this the voice → SubmitMove pipeline silently no-ops because GameStateManager.SpawnFlow can't find a BattleManager in the scene.")]
+        public GameObject battleManagerPrefab;
+
         [SerializeField] private BackendConfig config;
 
         public int playerCount = 2;
@@ -125,6 +128,29 @@ namespace Tigerverse.Net
             else if (Runner.IsSharedModeMasterClient && sessionManagerPrefab == null)
             {
                 Debug.LogWarning("[SessionRunner] sessionManagerPrefab unassigned, SessionManager will NOT spawn. Drag the prefab into the inspector field on Bootstrap.");
+            }
+
+            // Master client also spawns the BattleManager so voice → SubmitMove
+            // has a NetworkObject to RPC against. Without this, GameStateManager
+            // .SpawnFlow's FindFirstObjectByType<BattleManager>() returns null,
+            // voiceRouter.Bind(null,...) goes through, and every move call no-ops
+            // silently. Fusion replicates this NetworkObject to all clients
+            // within a few ticks of spawn.
+            if (Runner.IsSharedModeMasterClient && battleManagerPrefab != null)
+            {
+                var no = battleManagerPrefab.GetComponent<NetworkObject>();
+                if (no != null)
+                {
+                    Runner.Spawn(no, Vector3.zero, Quaternion.identity, Runner.LocalPlayer);
+                }
+                else
+                {
+                    Debug.LogError("[SessionRunner] battleManagerPrefab has no NetworkObject component.");
+                }
+            }
+            else if (Runner.IsSharedModeMasterClient && battleManagerPrefab == null)
+            {
+                Debug.LogWarning("[SessionRunner] battleManagerPrefab unassigned, BattleManager will NOT spawn and voice combat will be a no-op. Drag the prefab into the inspector field on Bootstrap.");
             }
 
                 try { OnRunnerConnected?.Invoke(); } catch (Exception e) { Debug.LogException(e); }

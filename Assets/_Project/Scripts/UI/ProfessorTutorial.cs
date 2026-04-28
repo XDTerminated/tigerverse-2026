@@ -39,7 +39,7 @@ namespace Tigerverse.UI
 
         [Header("Behaviour")]
         [SerializeField] private bool allowQandA = true;
-        [SerializeField] private TMPro.TextMeshPro subtitleLabel;
+        private RPGDialogueBox _dialogueBox;
 
         [Header("Refs (auto-found if null)")]
         [SerializeField] private VoiceCommandRouter voiceRouter;
@@ -250,25 +250,17 @@ namespace Tigerverse.UI
             // Pop-in animation handled by PaperProfessor (added by another agent).
             StartCoroutine(_professor.PlaySpawnAnimation());
 
-            if (subtitleLabel == null)
+            if (_dialogueBox == null)
             {
-                var lblGo = new GameObject("ProfessorSubtitle");
-                // Subtitle stays parented to the professor so it tracks any
-                // bobbing / movement the figure has during speech.
-                lblGo.transform.SetParent(profGo.transform, false);
-                // Subtitle sits above the hat (hat top is around y=1.47).
-                // Bumped from 1.45 to 1.95 so the professor's words don't get
-                // clipped by the cone of the wizard hat.
-                lblGo.transform.localPosition = new Vector3(0, 1.95f, 0);
-                subtitleLabel = lblGo.AddComponent<TMPro.TextMeshPro>();
-                subtitleLabel.text = "";
-                subtitleLabel.fontSize = 0.5f;
-                subtitleLabel.alignment = TMPro.TextAlignmentOptions.Center;
-                subtitleLabel.color = new Color(0.07f, 0.06f, 0.10f, 1);
-                subtitleLabel.outlineColor = new Color32(255, 255, 255, 230);
-                subtitleLabel.outlineWidth = 0.18f;
-                subtitleLabel.enableWordWrapping = true;
-                subtitleLabel.rectTransform.sizeDelta = new Vector2(2.2f, 0.6f);
+                // RPG-style dialogue box (panel + portrait + speaker header +
+                // body), parented to the professor so it tracks any bob/sway.
+                // Initialize() positions it at localY 1.95 (above the hat),
+                // and the script billboards each LateUpdate to face the player.
+                var dialogueGo = new GameObject("ProfessorDialogue");
+                _dialogueBox = dialogueGo.AddComponent<RPGDialogueBox>();
+                _dialogueBox.Initialize(profGo.transform, "Professor Hooten",
+                    Resources.Load<Texture2D>("face"));
+                _dialogueBox.Hide();
             }
         }
 
@@ -1687,7 +1679,16 @@ namespace Tigerverse.UI
 
         private void ShowSubtitle(string text)
         {
-            if (subtitleLabel != null) subtitleLabel.text = text ?? "";
+            if (_dialogueBox == null) return;
+            if (string.IsNullOrEmpty(text)) { _dialogueBox.Hide(); return; }
+            _dialogueBox.Show();
+            // Stage directions like "(Listening — ask me anything!)" come
+            // wrapped in parentheses; render those without portrait/header
+            // and in italics. Speech lines render as full RPG-style cards.
+            if (text.Length >= 2 && text[0] == '(' && text[text.Length - 1] == ')')
+                _dialogueBox.SetStageDirection(text);
+            else
+                _dialogueBox.SetText(text);
         }
 
         private static float EstimateLineDuration(string text)

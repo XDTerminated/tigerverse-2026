@@ -10172,6 +10172,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sessionManagerPrefab: {fileID: 7988596477058966773, guid: a9dc682c4be934b4bae5357fcc2458aa, type: 3}
+  battleManagerPrefab: {fileID: 7821453188094261004, guid: 4b8f2a91d6e74c2e9a5d3f1c8e7b6a52, type: 3}
   config: {fileID: 11400000, guid: 3480f01d7de165f48bb6c23e75501be0, type: 2}
   playerCount: 2
 --- !u!114 &1218221466
