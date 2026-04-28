@@ -62,6 +62,10 @@ namespace Tigerverse.Net
                     Debug.LogWarning("[SessionRunner] StartShared called with empty code; aborting.");
                     return false;
                 }
+                // NOTE: mock mode still goes through Photon. Mock only skips
+                // the Vercel/Meshy backend (canned monsters), but the actual
+                // multiplayer battle is still networked so two players can
+                // fight each other and the win/loop syncs across devices.
 
                 // Fusion's NetworkRunner is single-use. If it's already been used (started or shut down),
                 // destroy it and create a fresh component on the same GameObject.
@@ -176,6 +180,7 @@ namespace Tigerverse.Net
                 await Runner.Shutdown();
             }
         }
+
 
         // ---------- INetworkRunnerCallbacks (only what we need) ----------
 
