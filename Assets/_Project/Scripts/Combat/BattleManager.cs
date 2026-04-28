@@ -379,9 +379,16 @@ namespace Tigerverse.Combat
             // 1. Cry before attack.
             if (casterCry != null) casterCry.PlayBeforeAttack();
 
-            // 2. Cast SFX at caster.
-            if (move.castSfx != null && casterPivot != null)
-                AudioSource.PlayClipAtPoint(move.castSfx, casterPivot.position);
+            // 2. Cast SFX at caster. Falls back to a procedurally-synthesized
+            // element-flavoured clip if the MoveSO doesn't have one wired —
+            // most of the canned MoveSO assets have castSfx unassigned, which
+            // used to leave combat completely silent.
+            if (casterPivot != null)
+            {
+                AudioClip castClip = move.castSfx
+                    ?? ProceduralMoveSfx.Get(move.element, ProceduralMoveSfx.Role.Cast);
+                if (castClip != null) AudioSource.PlayClipAtPoint(castClip, casterPivot.position);
+            }
 
             // 3. Caster lunge animation (parallel, don't yield).
             if (casterPivot != null && move.specialFlag != MoveSO.SpecialFlag.HealSelf)
@@ -431,9 +438,13 @@ namespace Tigerverse.Combat
                 Destroy(orb.gameObject);
             }
 
-            // 6. Impact: SFX at defender.
-            if (move.hitSfx != null && defenderPivot != null)
-                AudioSource.PlayClipAtPoint(move.hitSfx, defenderPivot.position);
+            // 6. Impact: SFX at defender. Same fallback logic as the cast SFX.
+            if (defenderPivot != null)
+            {
+                AudioClip hitClip = move.hitSfx
+                    ?? ProceduralMoveSfx.Get(move.element, ProceduralMoveSfx.Role.Hit);
+                if (hitClip != null) AudioSource.PlayClipAtPoint(hitClip, defenderPivot.position);
+            }
 
             // Move prefab vfx to defender if it was an assigned one.
             if (vfxInstance != null && defenderPivot != null)

@@ -640,6 +640,51 @@ namespace Tigerverse.Core
             {
                 qrDisplays[0].ShowCode(config.backendBaseUrl, $"recap/{sessionCode}?winner={winnerIndex}");
             }
+
+            // Big floating "X WINS!" banner with announcer voice line. Both
+            // clients run this independently — OnBattleEnd was broadcast via
+            // BattleManager's RPC fan-out so the two devices fire HandleBattleEnd
+            // within a tick of each other, and the 8 s timer is in real time.
+            string winnerName = (winnerIndex == 0)
+                ? (statsA != null ? statsA.displayName : "Player 1")
+                : (statsB != null ? statsB.displayName : "Player 2");
+            Tigerverse.UI.WinScreenBanner.Spawn(winnerName);
+
+            yield return new WaitForSeconds(8f);
+
+            // Tear down Photon and reload the title scene so both players
+            // loop back to the PLAY/TUTORIAL/SETTINGS menu for a fresh match.
+            // Bootstrap (with SessionRunner) is DontDestroyOnLoad so we shut
+            // the runner down explicitly first — leaving it live across the
+            // reload would have it try to spawn into a stale room state.
+            yield return ReturnToTitle();
+        }
+
+        private IEnumerator ReturnToTitle()
+        {
+            if (runner != null)
+            {
+                Task shutdown = runner.Shutdown();
+                if (shutdown != null)
+                {
+                    float deadline = Time.time + 3f;
+                    yield return new WaitUntil(() => shutdown.IsCompleted || Time.time > deadline);
+                }
+            }
+            // Reset our local session state so a fresh hostFlow can start
+            // without inheriting stale code / caster index / monster refs.
+            sessionCode = null;
+            statsA = null;
+            statsB = null;
+            monsterAGo = null;
+            monsterBGo = null;
+            SetState(AppState.Title);
+
+            // Reload the active scene. Bootstrap survives via DontDestroyOnLoad,
+            // TitleScreen.Start re-runs and rebuilds the loading menu with PLAY
+            // already ungated (PlayerPrefs persists tutorial completion).
+            var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            UnityEngine.SceneManagement.SceneManager.LoadScene(active.buildIndex);
         }
 
         private float MapStatus(string s)
