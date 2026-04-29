@@ -35,13 +35,15 @@ namespace Tigerverse.UI
         [Tooltip("Cached UploadThing GLB used as the Professor's borrowed scribble during the practice fight.")]
         [SerializeField] private string borrowedScribbleGlbUrl = "https://ueggfh303j.ufs.sh/f/hqoaI3f7pqQl6koHkKXdhzSPI8ykOc45FrwKeWNpJfbAYMB6";
         [Tooltip("Local fallback test model loaded from Resources/. Used as the borrowed scribble if it can be found; the GLB download is only attempted if this load fails. Default: a generic untextured humanoid that ships with the project.")]
-        [SerializeField] private string testScribbleResourcePath = "Characters/CharacterBase";
+        [SerializeField] private string testScribbleResourcePath = "BorrowedScribble";
         [Tooltip("How long the player has to say THUNDER BOLT before the dummy 'wins' anyway and we move on.")]
         [SerializeField] private float practiceListenWindowSec = 12f;
         [Tooltip("Vertical offset added to the practice dummy spawn so the FBX (whose pivot sits at the model's centre) stands on the floor instead of half-buried in it.")]
         [SerializeField] private float dummyVerticalOffset = 0f;
-        [Tooltip("Vertical offset added to the borrowed scribble after auto-scaling so it floats at chest height instead of clipping the floor.")]
-        [SerializeField] private float borrowedScribbleVerticalOffset = 0.7f;
+        [Tooltip("Vertical offset added to the borrowed scribble after auto-scaling so it floats at chest height instead of clipping the floor. Set to 0 to put it flush with the floor.")]
+        [SerializeField] private float borrowedScribbleVerticalOffset = 0f;
+        [Tooltip("Extra yaw rotation (degrees) applied to the borrowed scribble after the auto-face-the-dummy rotation. Use this to flip a GLB whose authored forward axis points the wrong way.")]
+        [SerializeField] private float borrowedScribbleYawOffsetDeg = 180f;
 
         [Header("Behaviour")]
         [SerializeField] private bool allowQandA = true;
@@ -448,14 +450,16 @@ namespace Tigerverse.UI
                     localContainer.transform.SetParent(transform, worldPositionStays: true);
                     localContainer.transform.position = _stageCenter - _stageForward * 0.5f + Vector3.up * borrowedScribbleVerticalOffset;
                     Vector3 localAwayFromPlayer = -_stageForward;
-                    if (localAwayFromPlayer.sqrMagnitude > 1e-4f)
-                        localContainer.transform.rotation = Quaternion.LookRotation(localAwayFromPlayer, Vector3.up);
-                    else
-                        localContainer.transform.rotation = Quaternion.Euler(0, 90f, 0);
+                    Quaternion baseRot = (localAwayFromPlayer.sqrMagnitude > 1e-4f)
+                        ? Quaternion.LookRotation(localAwayFromPlayer, Vector3.up)
+                        : Quaternion.Euler(0, 90f, 0);
+                    // Yaw offset compensates for GLBs whose authored "front" is
+                    // -Z instead of +Z (common from Blender). Default 180°.
+                    localContainer.transform.rotation = baseRot * Quaternion.Euler(0f, borrowedScribbleYawOffsetDeg, 0f);
                     // Smaller target than the GLB path (0.45 vs 0.55) — the
                     // fallback is a full humanoid, so we shrink it a bit so
                     // it reads as a creature instead of a tiny person.
-                    AutoScale(localContainer.transform, 0.45f);
+                    AutoScale(localContainer.transform, 0.90f);
                     try { DrawingColorize.Apply(localContainer, MakeSolidTexture(new Color(0.95f, 0.85f, 0.55f)), 0f); }
                     catch (Exception e) { Debug.LogException(e); }
                     _borrowedScribble = localContainer;
@@ -784,10 +788,10 @@ namespace Tigerverse.UI
             // Professor visibly casts the spell.
             _professor?.Cast();
 
-            // Professor points at the dummy as his scribble fires. Wired here
-            // (rather than just on every spoken line) so the gesture lines up
-            // with the practice attack visually.
-            if (_professor != null) _professor.PlayPoint();
+            // (Disabled — the Adventurer FBX's pointing clip read as the
+            // Professor "whipping" his own scribble during the attack which
+            // confused testers. Leave the cast visuals to the scribble.)
+            // if (_professor != null) _professor.PlayPoint();
 
             // Quick "wind-up" on the borrowed scribble — small jump.
             if (_borrowedScribble != null)
