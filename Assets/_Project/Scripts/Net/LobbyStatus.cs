@@ -3,6 +3,8 @@ using System.Linq;
 using Fusion;
 using TMPro;
 using UnityEngine;
+using Tigerverse.Core;
+using Tigerverse.UI;
 
 namespace Tigerverse.Net
 {
@@ -23,12 +25,23 @@ namespace Tigerverse.Net
         private NetworkRunner _runner;
         private bool _shrunk;
         private bool _hidden;
+        private AnimatedDotsLabel _dots;
+        private GameStateManager _gsm;
 
         public void SetLabel(TMP_Text t) { label = t; }
+
+        private void EnsureDots()
+        {
+            if (_dots != null || label == null) return;
+            _dots = label.GetComponent<AnimatedDotsLabel>();
+            if (_dots == null) _dots = label.gameObject.AddComponent<AnimatedDotsLabel>();
+        }
 
         private void Update()
         {
             if (label == null) return;
+            EnsureDots();
+            if (_gsm == null) _gsm = FindFirstObjectByType<GameStateManager>();
             if (_runner == null || !_runner.IsRunning)
             {
                 _runner = FindFirstObjectByType<NetworkRunner>();
@@ -54,20 +67,33 @@ namespace Tigerverse.Net
                 }
             }
 
-            // While we wait for the opponent, show the room code on the
-            // status label so the host can read it out loud.
+            // Status hierarchy: DrawWait/Hatch/Battle (in-game progress text)
+            // outranks the lobby occupancy line, since by then both players
+            // are in the room and the relevant info is "monsters generating /
+            // hatching / fighting" rather than "1/2 players".
             string code = _runner.SessionInfo != null ? _runner.SessionInfo.Name : null;
-            if (ready)
+            AppState? state = _gsm != null ? _gsm.currentState : (AppState?)null;
+            switch (state)
             {
-                label.text = $"Players: {n}/{requiredPlayers}, Ready! Look around, you should see your partner.";
-            }
-            else if (!string.IsNullOrEmpty(code))
-            {
-                label.text = $"Room <b>{code}</b>, waiting for opponent… ({n}/{requiredPlayers})";
-            }
-            else
-            {
-                label.text = $"Players: {n}/{requiredPlayers}, waiting…";
+                case AppState.DrawWait:
+                    SetDots("Generating monsters", animated: true);
+                    break;
+                case AppState.Hatch:
+                    SetDots("Hatching", animated: true);
+                    break;
+                case AppState.Battle:
+                case AppState.Result:
+                    // Battle has its own UI; clear the lobby status.
+                    SetDots(string.Empty, animated: false);
+                    break;
+                default:
+                    if (ready)
+                        SetDots($"Players: {n}/{requiredPlayers}, Ready! Look around, you should see your partner.", animated: false);
+                    else if (!string.IsNullOrEmpty(code))
+                        SetDots($"Room <b>{code}</b>, waiting for opponent ({n}/{requiredPlayers})", animated: true);
+                    else
+                        SetDots($"Players: {n}/{requiredPlayers}, waiting", animated: true);
+                    break;
             }
 
             if (ready && !_shrunk)
@@ -81,6 +107,12 @@ namespace Tigerverse.Net
                 if (canvas != null) canvas.gameObject.SetActive(false);
                 else gameObject.SetActive(false);
             }
+        }
+
+        private void SetDots(string text, bool animated)
+        {
+            if (_dots != null) _dots.SetMessage(text, animated);
+            else if (label != null) label.text = text;
         }
     }
 }

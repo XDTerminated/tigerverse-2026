@@ -784,6 +784,11 @@ namespace Tigerverse.UI
             // Professor visibly casts the spell.
             _professor?.Cast();
 
+            // Professor points at the dummy as his scribble fires. Wired here
+            // (rather than just on every spoken line) so the gesture lines up
+            // with the practice attack visually.
+            if (_professor != null) _professor.PlayPoint();
+
             // Quick "wind-up" on the borrowed scribble — small jump.
             if (_borrowedScribble != null)
             {

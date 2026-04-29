@@ -59,6 +59,15 @@ namespace Tigerverse.UI
         private static readonly int SpeakHash = Animator.StringToHash("Speak");
         private static readonly int CastHash  = Animator.StringToHash("Cast");
         private static readonly int HitHash   = Animator.StringToHash("Hit");
+        private static readonly int PointHash = Animator.StringToHash("Point");
+
+        /// <summary>
+        /// Fires the "Point" trigger on the Adventurer animator. Wire a Point
+        /// state in Resources/Characters/Adventurer.controller driven by a
+        /// Trigger param named "Point" with the FBX's pointing clip. Safe to
+        /// call before that wiring exists — it silently no-ops.
+        /// </summary>
+        public void PlayPoint() => TryFireTrigger(PointHash);
 
         private void Awake()
         {

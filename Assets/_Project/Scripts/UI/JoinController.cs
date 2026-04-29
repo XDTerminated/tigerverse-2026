@@ -57,21 +57,23 @@ namespace Tigerverse.UI
                 return;
             }
 
-            SetStatus($"Joining {code}...", isError: false);
+            SetStatus($"Connecting to {code}", isError: false, animated: true);
             gsm.JoinByCode(code);
         }
 
         // Called externally by HostController when StartHosting fires, to display the code.
         public void ShowHostCode(string code)
         {
-            SetStatus($"Code: {code}", isError: false);
+            SetStatus($"Code: {code}", isError: false, animated: false);
         }
 
-        private void SetStatus(string text, bool isError)
+        private void SetStatus(string text, bool isError, bool animated = false)
         {
             if (statusLabel == null) return;
-            statusLabel.text = text;
             statusLabel.color = isError ? ErrorColor : StatusColor;
+            var dots = statusLabel.GetComponent<AnimatedDotsLabel>();
+            if (dots == null) dots = statusLabel.gameObject.AddComponent<AnimatedDotsLabel>();
+            dots.SetMessage(text, animated);
         }
     }
 }

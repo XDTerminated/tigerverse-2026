@@ -387,6 +387,18 @@ namespace Tigerverse.Combat
             // 1. Cry before attack.
             if (casterCry != null) casterCry.PlayBeforeAttack();
 
+            // Trigger the casting trainer's "Point" pose on every PaperHumanoid
+            // currently in the scene. The local player doesn't render their
+            // own PaperHumanoid (we see our controllers), so on each device
+            // the only humanoid present is the opponent's body — meaning
+            // calling on all of them effectively only fires for the visible
+            // remote avatar. The animation only plays if their Casual /
+            // MaleCasual.controller actually defines a "Point" trigger; the
+            // PaperHumanoid.PlayPoint helper safely no-ops otherwise.
+            var humanoids = FindObjectsByType<Tigerverse.Net.PaperHumanoid>(FindObjectsSortMode.None);
+            for (int i = 0; i < humanoids.Length; i++)
+                if (humanoids[i] != null) humanoids[i].PlayPoint();
+
             // 2. Cast SFX at caster. Falls back to a procedurally-synthesized
             // element-flavoured clip if the MoveSO doesn't have one wired —
             // most of the canned MoveSO assets have castSfx unassigned, which
