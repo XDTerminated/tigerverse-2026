@@ -69,6 +69,11 @@ namespace Tigerverse.Combat
         private int _lastSeenHPa = -1;
         private int _lastSeenHPb = -1;
 
+        // Idempotency for OnBattleEnd. Both the StateAuthority RPC path and
+        // the Render-side WinnerIndex watcher can fire the event; we only
+        // want one invocation per match per client.
+        private bool _battleEndFired;
+
         public override void Spawned()
         {
             if (catalog == null) catalog = MoveCatalog.Instance;
@@ -79,6 +84,7 @@ namespace Tigerverse.Combat
         {
             statsA = a;
             statsB = b;
+            _battleEndFired = false;
 
             // Always set HP, regardless of network authority. The previous
             // auth-gated init left HPa/HPb at 0 on non-authority clients,
@@ -354,9 +360,11 @@ namespace Tigerverse.Combat
 
             EffectFlags flags = (EffectFlags)effectFlags;
 
-            if ((flags & EffectFlags.FinalBlow) != 0)
+            if ((flags & EffectFlags.FinalBlow) != 0 && !_battleEndFired)
             {
+                _battleEndFired = true;
                 int winner = (HPa <= 0) ? 1 : 0;
+                Debug.Log($"[Battle] Final blow detected via RPC. Winner={winner}. Firing OnBattleEnd.");
                 OnBattleEnd.Invoke(winner);
                 if (winner == 0) { if (cryA != null) cryA.PlayWin();  if (cryB != null) cryB.PlayLose(); }
                 else             { if (cryB != null) cryB.PlayWin();  if (cryA != null) cryA.PlayLose(); }
@@ -786,6 +794,22 @@ namespace Tigerverse.Combat
                 OnHPChanged.Invoke(HPa, maxA, HPb, maxB);
                 _lastSeenHPa = HPa;
                 _lastSeenHPb = HPb;
+            }
+
+            // Backup win-trigger: the StateAuthority drives WinnerIndex via
+            // [Networked] state. If the RPC_PlayResolved fan-out missed a
+            // client (or that client's OnBattleEnd listener wasn't wired in
+            // time), watching the replicated WinnerIndex here makes sure
+            // every client still gets HandleBattleEnd called → win banner →
+            // scene reload, so both players loop back to the menu instead of
+            // just the one whose RPC handler fired.
+            if (!_battleEndFired && Phase == BattlePhase.End && WinnerIndex >= 0)
+            {
+                _battleEndFired = true;
+                Debug.Log($"[Battle] Final blow detected via Networked WinnerIndex={WinnerIndex} (RPC backup path). Firing OnBattleEnd.");
+                OnBattleEnd.Invoke(WinnerIndex);
+                if (WinnerIndex == 0) { if (cryA != null) cryA.PlayWin();  if (cryB != null) cryB.PlayLose(); }
+                else                  { if (cryB != null) cryB.PlayWin();  if (cryA != null) cryA.PlayLose(); }
             }
         }
     }
