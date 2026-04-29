@@ -667,27 +667,36 @@ namespace Tigerverse.Core
 
         private IEnumerator EndSequence(int winnerIndex)
         {
+            Debug.Log($"[GameStateManager] EndSequence start. winner={winnerIndex} isMaster={(runner != null && runner.Runner != null && runner.Runner.IsSharedModeMasterClient)}");
             // Allow a frame so the result UI can settle, then capture screenshot.
             yield return null;
-            string fileName = $"tigerverse_result_{System.DateTime.Now:yyyyMMdd_HHmmss}.png";
-            ScreenCapture.CaptureScreenshot(fileName);
+            try
+            {
+                string fileName = $"tigerverse_result_{System.DateTime.Now:yyyyMMdd_HHmmss}.png";
+                ScreenCapture.CaptureScreenshot(fileName);
+            }
+            catch (Exception e) { Debug.LogWarning($"[GameStateManager] Screenshot capture threw: {e.Message}"); }
 
             // Surface a download QR. Reuse first QR display, point to a backend recap URL.
-            if (qrDisplays != null && qrDisplays.Length > 0 && qrDisplays[0] != null && config != null)
+            try
             {
-                qrDisplays[0].ShowCode(config.backendBaseUrl, $"recap/{sessionCode}?winner={winnerIndex}");
+                if (qrDisplays != null && qrDisplays.Length > 0 && qrDisplays[0] != null && config != null)
+                    qrDisplays[0].ShowCode(config.backendBaseUrl, $"recap/{sessionCode}?winner={winnerIndex}");
             }
+            catch (Exception e) { Debug.LogWarning($"[GameStateManager] QR ShowCode threw: {e.Message}"); }
 
-            // Big floating "X WINS!" banner with announcer voice line. Both
-            // clients run this independently — OnBattleEnd was broadcast via
-            // BattleManager's RPC fan-out so the two devices fire HandleBattleEnd
-            // within a tick of each other, and the 8 s timer is in real time.
+            // Big floating "X WINS!" banner. The voice line is fired by the
+            // BattleCommentator via OnBattleEnd, NOT by the banner itself
+            // (used to overlap and made the audio unintelligible).
             string winnerName = (winnerIndex == 0)
                 ? (statsA != null ? statsA.displayName : "Player 1")
                 : (statsB != null ? statsB.displayName : "Player 2");
-            Tigerverse.UI.WinScreenBanner.Spawn(winnerName);
+            try { Tigerverse.UI.WinScreenBanner.Spawn(winnerName); }
+            catch (Exception e) { Debug.LogError($"[GameStateManager] WinScreenBanner.Spawn threw: {e.Message}"); }
 
+            Debug.Log("[GameStateManager] EndSequence waiting 8s before reloading title…");
             yield return new WaitForSeconds(8f);
+            Debug.Log("[GameStateManager] EndSequence 8s elapsed, calling ReturnToTitle.");
 
             // Tear down Photon and reload the title scene so both players
             // loop back to the PLAY/TUTORIAL/SETTINGS menu for a fresh match.
@@ -695,19 +704,28 @@ namespace Tigerverse.Core
             // the runner down explicitly first — leaving it live across the
             // reload would have it try to spawn into a stale room state.
             yield return ReturnToTitle();
+            Debug.Log("[GameStateManager] EndSequence finished.");
         }
 
         private IEnumerator ReturnToTitle()
         {
+            Debug.Log("[GameStateManager] ReturnToTitle: shutting down runner…");
             if (runner != null)
             {
-                Task shutdown = runner.Shutdown();
+                Task shutdown = null;
+                try { shutdown = runner.Shutdown(); }
+                catch (Exception e) { Debug.LogWarning($"[GameStateManager] runner.Shutdown threw synchronously: {e.Message}"); }
                 if (shutdown != null)
                 {
                     float deadline = Time.time + 3f;
                     yield return new WaitUntil(() => shutdown.IsCompleted || Time.time > deadline);
+                    if (!shutdown.IsCompleted)
+                        Debug.LogWarning("[GameStateManager] runner.Shutdown timed out after 3s, proceeding to reload anyway.");
+                    else
+                        Debug.Log("[GameStateManager] runner.Shutdown completed.");
                 }
             }
+
             // Reset our local session state so a fresh hostFlow can start
             // without inheriting stale code / caster index / monster refs.
             sessionCode = null;
@@ -715,13 +733,29 @@ namespace Tigerverse.Core
             statsB = null;
             monsterAGo = null;
             monsterBGo = null;
+            _endSequenceStarted = false;
             SetState(AppState.Title);
 
-            // Reload the active scene. Bootstrap survives via DontDestroyOnLoad,
-            // TitleScreen.Start re-runs and rebuilds the loading menu with PLAY
-            // already ungated (PlayerPrefs persists tutorial completion).
-            var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            UnityEngine.SceneManagement.SceneManager.LoadScene(active.buildIndex);
+            // Reload by scene NAME — buildIndex returns -1 if the scene is
+            // missing from Build Settings, which previously caused
+            // SceneManager.LoadScene to silently no-op on the master and
+            // leave them stuck on the win banner forever while the joiner
+            // (whose scene index happened to resolve) reloaded fine.
+            const string titleSceneName = "Title";
+            Debug.Log($"[GameStateManager] ReturnToTitle: loading scene '{titleSceneName}' now.");
+            try
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[GameStateManager] LoadScene('{titleSceneName}') threw: {e.Message}. Falling back to active-scene buildIndex reload.");
+                var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+                if (active.buildIndex >= 0)
+                    UnityEngine.SceneManagement.SceneManager.LoadScene(active.buildIndex);
+                else
+                    Debug.LogError($"[GameStateManager] Active scene '{active.name}' has buildIndex={active.buildIndex}. Add the Title scene to Build Settings to fix the loop-back.");
+            }
         }
 
         private float MapStatus(string s)

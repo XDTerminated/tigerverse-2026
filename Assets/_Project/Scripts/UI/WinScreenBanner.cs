@@ -29,7 +29,10 @@ namespace Tigerverse.UI
         public void SetWinner(string winnerName)
         {
             BuildCanvas(winnerName);
-            StartCoroutine(SpeakAnnouncement(winnerName));
+            // Intentionally NOT calling SpeakAnnouncement — BattleCommentator
+            // already fires its KO line via the OnBattleEnd hook, and having
+            // both speak at the same moment created an overlapping mess. The
+            // commentator's line is more in-character anyway.
         }
 
         private void BuildCanvas(string winnerName)

@@ -147,90 +147,101 @@ namespace Tigerverse.Combat
         // ─── Line pools ─────────────────────────────────────────────────
         private static readonly string[] BattleStartLines =
         {
-            "Trainers ready? Let's see those scribbles in action!",
-            "Welcome to Scribble Showdown!",
-            "Alright folks, this one's gonna be a brawl!",
-            "And we are LIVE in the arena!"
+            "Helloooo Scribble Showdown! What a crowd tonight!",
+            "Trainers, take your positions! HERE WE GO!",
+            "Folks, you are NOT gonna want to blink for this one!",
+            "Lights down, scribbles up — IT IS ON!",
+            "We are LIVE from the Scribble Dome — let's RUMBLE!"
         };
 
         private static readonly string[] ElectricLines =
         {
-            "{caster} sparks up {move}!",
-            "ZAP! That's some serious voltage from {caster}!",
-            "{move}! The air is electric!",
-            "{caster} brings the thunder with {move}!"
+            "{move}! OOOH the SPARKS are flying!",
+            "{caster} lights it up with {move}!",
+            "Lightning down the middle! {move}!",
+            "ZAP! {caster} is COOKING with electricity!",
+            "Pure voltage! That is text-book {move}!"
         };
 
         private static readonly string[] FireLines =
         {
-            "{caster} ignites {move}!",
-            "It's getting HOT in here, folks!",
-            "{move}! That's gonna leave a scorch mark!",
-            "Fireballs flying from {caster}!"
+            "{move}! {caster} is BRINGING THE HEAT!",
+            "Whoa! Fireball connects! That hurt!",
+            "{caster} sets the arena ABLAZE with {move}!",
+            "RED HOT! {caster} is on FIRE tonight!",
+            "{move}! {defender} just got TORCHED!"
         };
 
         private static readonly string[] WaterLines =
         {
-            "{caster} unleashes {move}!",
-            "A torrent of water from {caster}!",
-            "{defender} is getting drenched!",
-            "{caster} makes a splash!"
+            "{move}! {caster} cracks open the ocean!",
+            "Tsunami incoming! {move}!",
+            "WHOOSH! {caster} drowns the opposition!",
+            "{defender} is SOAKED, folks!",
+            "{move}! Big crashing wave on {defender}!"
         };
 
         private static readonly string[] IceLines =
         {
-            "{caster} freezes the field with {move}!",
-            "Brrr, {move} from {caster}!",
-            "Ice cold strike!",
-            "{caster} chills the room!"
+            "{move}! Sub-zero strike from {caster}!",
+            "BRRR! That is COLD! {move}!",
+            "{caster} freezes the field — {move}!",
+            "Glacier-sized hit! {defender} is iced!",
+            "{move}! Pure crystalline DEVASTATION!"
         };
 
         private static readonly string[] GrassLines =
         {
-            "{caster} channels nature's fury, {move}!",
-            "Vines and venom from {caster}!",
-            "{move}! Don't underestimate the green stuff!",
-            "{caster} brings the bloom!"
+            "{move}! Mother Nature is FURIOUS!",
+            "{caster} whips out the vines! {move}!",
+            "Bloom and DOOM! {move}!",
+            "{move}! {defender} just got tangled UP!",
+            "Green fury from {caster}! That hurt!"
         };
 
         private static readonly string[] EarthLines =
         {
-            "{caster} shakes the ground with {move}!",
-            "{move}! That earth is moving!",
-            "Tremors from {caster}!",
-            "Solid hit from {caster}!"
+            "{move}! The ground itself is FIGHTING for {caster}!",
+            "BOOM! Tremors rolling out of {caster}!",
+            "{caster} drops the BIG ONE — {move}!",
+            "Geological warfare, folks! {move}!",
+            "{move}! That is some heavyweight ROCK!"
         };
 
         private static readonly string[] DarkLines =
         {
-            "{caster} drops some shade with {move}!",
-            "{move}! Spooky stuff from {caster}!",
-            "Things just got ominous!",
-            "{caster} unleashes the darkness!"
+            "{move}! {caster} brings out the DARKNESS!",
+            "Ooooh, things just got SPOOKY!",
+            "{move}! Pure shadow energy from {caster}!",
+            "{defender} won't see this one coming! {move}!",
+            "{caster} plays DIRTY with {move}!"
         };
 
         private static readonly string[] NeutralLines =
         {
-            "{caster} throws {move}!",
-            "Clean strike from {caster}!",
-            "{caster} keeps the pressure with {move}!",
-            "{move}! Right on target!"
+            "{move}! Clean and CRISP from {caster}!",
+            "Right on the button! {move}!",
+            "{caster} pressing hard with {move}!",
+            "{defender} is taking PUNISHMENT!",
+            "{move}! Textbook execution!"
         };
 
         private static readonly string[] LowHpLines =
         {
-            "{name} is on the ropes!",
-            "{name} is hanging on by a thread!",
-            "One more and {name} is done!",
-            "{name} is in trouble, folks!"
+            "{name} is HURTING, folks! Hanging by a THREAD!",
+            "Look at {name} — one more shot and it is OVER!",
+            "{name} is on the brink of COLLAPSE!",
+            "Critical condition for {name}!",
+            "Folks, {name} is RUNNING ON FUMES!"
         };
 
         private static readonly string[] KoLines =
         {
-            "And THAT is the match! {winner} takes it!",
-            "GAME OVER! {winner} stands tall!",
-            "It's all over! {winner} is your champion!",
-            "{winner} WINS the showdown!"
+            "AND THAT'S THE MATCH! {winner} TAKES THE CROWN!",
+            "IT'S OVER! {winner} WINS!",
+            "GAME! SET! MATCH! {winner} is your CHAMPION!",
+            "WHAT A FINISH! {winner} STANDS TALL!",
+            "GOODNIGHT EVERYBODY! {winner} JUST WON SCRIBBLE SHOWDOWN!"
         };
     }
 }
