@@ -71,6 +71,24 @@ namespace Tigerverse.Net
                 if (leftHandVisual != null) leftHandVisual.gameObject.SetActive(false);
                 if (rightHandVisual != null) rightHandVisual.gameObject.SetActive(false);
 
+#if UNITY_EDITOR
+                // Editor-only debug body for the LOCAL player so WASD-driven
+                // walking can be verified solo (you can see your own Casual
+                // avatar walk-cycling). Disabled in real builds — in VR you
+                // shouldn't see your own head cube floating in your face.
+                {
+                    Debug.Log($"[PlayerAvatar] Editor-mode: spawning visible debug body for the local player.");
+                    var dbgGo = new GameObject("DebugLocalBody");
+                    dbgGo.transform.SetParent(transform, worldPositionStays: false);
+                    var dbg = dbgGo.AddComponent<PaperHumanoid>();
+                    dbg.headSrc      = _headSrc; // drive directly off the camera (no networking lag)
+                    dbg.leftHandSrc  = _leftSrc;
+                    dbg.rightHandSrc = _rightSrc;
+                    dbg.SetVariant(pid == 0 ? "MaleCasual" : "Casual");
+                    dbg.SetDisplayName("Me (debug)");
+                }
+#endif
+
                 Debug.Log($"[PlayerAvatar] Spawned local. headSrc={_headSrc}, L={_leftSrc}, R={_rightSrc}");
             }
             else
