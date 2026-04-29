@@ -79,6 +79,10 @@ namespace Tigerverse.UI
             ResolveHeadAnchor();
             BuildHPBar();
             _animator = GetComponentInChildren<Animator>();
+            // CRITICAL: a fresh Animator on a runtime-Instantiated prefab
+            // silently ignores SetTrigger / Play / CrossFade until Rebind
+            // is called. Without this the Hit/Die clips never fire.
+            if (_animator != null) _animator.Rebind();
         }
 
         private bool AnimatorHasParam(int hash)
@@ -125,13 +129,24 @@ namespace Tigerverse.UI
             // Trigger the Hoodie's HitRecieve clip via the Animator. On
             // the wrap-to-full edge case (HP would have dropped to 0), play
             // Death once for an extra-dramatic reaction before the wrap.
-            if (wrapped && AnimatorHasParam(DieHash))
+            // CrossFade in addition to SetTrigger because some controllers
+            // can swallow triggers if their condition graph isn't quite
+            // right; CrossFade forces the state regardless.
+            if (_animator == null || _animator.runtimeAnimatorController == null)
+            {
+                Debug.LogWarning($"[DummyHitFeedback] No animator/controller on dummy — Hit clip won't play.");
+            }
+            else if (wrapped && AnimatorHasParam(DieHash))
             {
                 _animator.SetTrigger(DieHash);
+                _animator.CrossFade("Die", 0.08f, 0);
+                Debug.Log("[DummyHitFeedback] Triggered Die (HP wrapped to full).");
             }
             else if (AnimatorHasParam(HitHash))
             {
                 _animator.SetTrigger(HitHash);
+                _animator.CrossFade("Hit", 0.08f, 0);
+                Debug.Log($"[DummyHitFeedback] Triggered Hit (hp={_hp}).");
             }
         }
 

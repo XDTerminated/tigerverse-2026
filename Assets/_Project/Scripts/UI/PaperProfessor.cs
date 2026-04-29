@@ -95,6 +95,10 @@ namespace Tigerverse.UI
             _model = inst.transform;
             _baseModelLocalPos = _model.localPosition;
             _animator = inst.GetComponentInChildren<Animator>();
+            // CRITICAL: Animators on freshly-Instantiated prefabs silently
+            // ignore Play / CrossFade / SetTrigger until Rebind() is called.
+            // Without this every animation hook below would be a no-op.
+            if (_animator != null) _animator.Rebind();
 
             // Cache the arm bones we'll drive procedurally for clap. Names
             // match the Adventurer / Casual KayKit rigs (Shoulder.L,
@@ -211,9 +215,31 @@ namespace Tigerverse.UI
 
         private void TryFireTrigger(int hash)
         {
-            if (_animator == null || _animator.runtimeAnimatorController == null) return;
+            if (_animator == null || _animator.runtimeAnimatorController == null)
+            {
+                Debug.LogWarning($"[PaperProfessor] TryFireTrigger({hash}) skipped — no animator/controller (animator={_animator}, controller={_animator?.runtimeAnimatorController}).");
+                return;
+            }
             foreach (var p in _animator.parameters)
-                if (p.nameHash == hash) { _animator.SetTrigger(hash); return; }
+            {
+                if (p.nameHash == hash)
+                {
+                    _animator.SetTrigger(hash);
+                    // Belt-and-suspenders: also call Animator.Play directly
+                    // on the destination state. SetTrigger only fires on
+                    // the *next* Animator update, and if any other state's
+                    // exit conditions consume the trigger first the
+                    // transition silently never happens. Animator.Play
+                    // forces the state change so the animation always plays.
+                    string stateName = p.name == "Speak" ? "Talk" : p.name;
+                    _animator.CrossFade(stateName, 0.08f, 0);
+                    Debug.Log($"[PaperProfessor] Animator: trigger '{p.name}' set + CrossFade('{stateName}'), cur clip='{(_animator.GetCurrentAnimatorClipInfo(0).Length>0?_animator.GetCurrentAnimatorClipInfo(0)[0].clip?.name:"<none>")}'");
+                    return;
+                }
+            }
+            var available = "";
+            foreach (var p in _animator.parameters) available += p.name + ",";
+            Debug.LogWarning($"[PaperProfessor] No animator parameter with hash {hash}. Available: [{available}]");
         }
 
         // Override the cached arm bones AFTER the Animator has run for the

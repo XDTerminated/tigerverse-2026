@@ -109,6 +109,10 @@ namespace Tigerverse.Net
             inst.transform.localRotation = Quaternion.identity;
             _model = inst.transform;
             _animator = inst.GetComponentInChildren<Animator>();
+            // CRITICAL: a fresh Animator on a runtime-Instantiated prefab
+            // silently ignores Play / CrossFade / SetTrigger until Rebind
+            // is called. Don't skip this.
+            if (_animator != null) _animator.Rebind();
             _lastPos = transform.position;
             BodyRenderers = GetComponentsInChildren<Renderer>(includeInactive: true);
             _built = true;
