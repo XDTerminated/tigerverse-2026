@@ -37,7 +37,7 @@ namespace Tigerverse.UI
         [Tooltip("How long the player has to say THUNDER BOLT before the dummy 'wins' anyway and we move on.")]
         [SerializeField] private float practiceListenWindowSec = 12f;
         [Tooltip("Vertical offset added to the practice dummy spawn so the FBX (whose pivot sits at the model's centre) stands on the floor instead of half-buried in it.")]
-        [SerializeField] private float dummyVerticalOffset = 0.9f;
+        [SerializeField] private float dummyVerticalOffset = 0f;
         [Tooltip("Vertical offset added to the borrowed scribble after auto-scaling so it floats at chest height instead of clipping the floor.")]
         [SerializeField] private float borrowedScribbleVerticalOffset = 0.7f;
 
@@ -466,9 +466,12 @@ namespace Tigerverse.UI
             // further from the player than the Professor.
             var root = new GameObject("PracticeDummy");
             root.transform.SetParent(transform, worldPositionStays: true);
-            // CharacterBase FBX has its pivot at the model centre, not at the
-            // feet, so without the dummyVerticalOffset bump the dummy renders
-            // half-buried in the floor.
+            // CharacterBase prefab is built with a wrapper that internally
+            // lifts the FBX so its feet sit at the wrapper's y=0. So we
+            // place the wrapper directly at the stage's floor Y (same as
+            // the Professor). dummyVerticalOffset stays exposed in the
+            // inspector for fine tuning if a particular scene's floor
+            // reference is offset.
             root.transform.position = _stageCenter - _stageForward * 1.7f + Vector3.up * dummyVerticalOffset;
             if (_stageForward.sqrMagnitude > 1e-4f)
                 root.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);

@@ -77,26 +77,78 @@ namespace Tigerverse.Voice
 
         private IEnumerator RequestMicAuthThenPick()
         {
+            // Best-effort: ask Unity's permission API. On macOS this rarely
+            // triggers the actual OS prompt by itself, but it's still the
+            // right thing to call so iOS / WebGL / Android paths work.
             if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
             {
                 Debug.Log("[VoiceCommandRouter] Requesting microphone authorization...");
                 yield return Application.RequestUserAuthorization(UserAuthorization.Microphone);
             }
 
-            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
-            {
-                Debug.LogError("[VoiceCommandRouter] Microphone authorization DENIED. " +
-                    "On macOS, grant access in System Settings → Privacy & Security → Microphone (the app must be listed there). " +
-                    "If Unity isn't listed, restart Unity so it re-requests, or run a built player with NSMicrophoneUsageDescription set.");
-                yield break;
-            }
-
+            // Don't bail on missing authorization here — on macOS Editor the
+            // HasUserAuthorization flag often stays false even after the
+            // user has granted access in System Settings. The real test is
+            // whether Microphone.Start succeeds, which we do in the warm-up.
             PickMicDevice();
+
+            // Force the macOS / Windows OS prompt to appear (and verify the
+            // pipe end-to-end) by briefly opening the device. macOS prompts
+            // the first time any process actually calls AudioComponent input
+            // — Application.RequestUserAuthorization alone is not enough in
+            // the Editor.
+            yield return WarmUpMicrophone();
+
             // XR subsystems start a frame or two after Awake, so the first
             // pick can mis-detect whether we're really on a headset. Re-pick
             // shortly after to land on the laptop mic when no HMD ever
             // comes online (laptop play / simulator runs).
             StartCoroutine(RepickAfterXrInit());
+        }
+
+        // Quick open-and-close on the picked mic so macOS shows its
+        // permission dialog and we discover sample-rate problems early
+        // rather than at the moment the player actually tries to speak.
+        private IEnumerator WarmUpMicrophone()
+        {
+            if (string.IsNullOrEmpty(micDeviceName)) yield break;
+
+            int rate = ResolveSupportedRate(micDeviceName, sampleRate);
+            var clip = Microphone.Start(micDeviceName, true, 1, rate);
+            if (clip == null)
+            {
+                Debug.LogError($"[VoiceCommandRouter] Microphone.Start warm-up returned null for '{micDeviceName}' @ {rate}Hz. " +
+                    "On macOS, check System Settings → Privacy & Security → Microphone and ensure Unity (or the built player) is listed and toggled on. " +
+                    "If Unity isn't listed at all, fully quit Unity and reopen — the OS only adds it after a Microphone.Start attempt with NSMicrophoneUsageDescription set.");
+                yield break;
+            }
+
+            // Drain a few frames so the device actually opens, then close.
+            yield return null;
+            yield return null;
+            try { Microphone.End(micDeviceName); } catch { }
+            Debug.Log($"[VoiceCommandRouter] Mic warm-up succeeded on '{micDeviceName}' @ {rate}Hz.");
+            sampleRate = rate;
+        }
+
+        // Some macOS input devices (esp. AirPods / built-in array mics) reject
+        // 16000 Hz outright and cause Microphone.Start to silently return null.
+        // Use GetDeviceCaps to find a workable rate.
+        private static int ResolveSupportedRate(string device, int requested)
+        {
+            int min, max;
+            try { Microphone.GetDeviceCaps(device, out min, out max); }
+            catch { return requested; }
+
+            // min==max==0 means "any rate works" per Unity docs.
+            if (min == 0 && max == 0) return requested;
+            if (requested >= min && requested <= max) return requested;
+            // Prefer 48kHz, 44.1kHz, 16kHz in that order — what most macOS
+            // input HALs actually deliver.
+            int[] candidates = { 48000, 44100, 16000 };
+            foreach (var c in candidates)
+                if (c >= min && c <= max) return c;
+            return Mathf.Clamp(requested, min, max);
         }
 
         private IEnumerator RepickAfterXrInit()
@@ -378,9 +430,20 @@ namespace Tigerverse.Voice
         // ─── VAD continuous open-mic ────────────────────────────────────
         private void StartVad()
         {
-            if (string.IsNullOrEmpty(micDeviceName)) return;
+            if (string.IsNullOrEmpty(micDeviceName))
+            {
+                Debug.LogWarning("[VoiceCommandRouter] StartVad: no mic device picked yet.", this);
+                return;
+            }
+            int rate = ResolveSupportedRate(micDeviceName, sampleRate);
             // Loop=true → 10 s circular buffer that never stops on its own.
-            currentClip = Microphone.Start(micDeviceName, true, 10, sampleRate);
+            currentClip = Microphone.Start(micDeviceName, true, 10, rate);
+            if (currentClip == null)
+            {
+                Debug.LogError($"[VoiceCommandRouter] Microphone.Start failed for VAD on '{micDeviceName}' @ {rate}Hz. Available devices: [{string.Join(", ", Microphone.devices)}]");
+                return;
+            }
+            sampleRate = rate;
             isRecording = true;
             _vadStarted = true;
             _vadInSpeech = false;
@@ -475,10 +538,25 @@ namespace Tigerverse.Voice
             if (isRecording) return;
             if (string.IsNullOrEmpty(micDeviceName))
             {
-                Debug.LogWarning("[VoiceCommandRouter] BeginRecord skipped: no mic device.", this);
+                Debug.LogWarning("[VoiceCommandRouter] BeginRecord skipped: no mic device. Re-picking...", this);
+                PickMicDevice();
+                if (string.IsNullOrEmpty(micDeviceName))
+                {
+                    Debug.LogError("[VoiceCommandRouter] BeginRecord aborted: no microphone available. " +
+                        $"Devices: [{string.Join(", ", Microphone.devices)}]");
+                    return;
+                }
+            }
+            int rate = ResolveSupportedRate(micDeviceName, sampleRate);
+            currentClip = Microphone.Start(micDeviceName, false, maxRecordSec, rate);
+            if (currentClip == null)
+            {
+                Debug.LogError($"[VoiceCommandRouter] Microphone.Start returned null for '{micDeviceName}' @ {rate}Hz. " +
+                    "macOS users: System Settings → Privacy & Security → Microphone, ensure Unity (or this app) is listed and enabled. " +
+                    $"Devices: [{string.Join(", ", Microphone.devices)}]");
                 return;
             }
-            currentClip = Microphone.Start(micDeviceName, false, maxRecordSec, sampleRate);
+            sampleRate = rate;
             isRecording = true;
             OnRecordStart?.Invoke();
         }
