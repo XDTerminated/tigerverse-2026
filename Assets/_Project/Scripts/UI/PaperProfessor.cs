@@ -107,6 +107,44 @@ namespace Tigerverse.UI
 
             // Floating "Professor" tag, sits above the figure's head.
             Tigerverse.UI.BillboardLabel.Create(transform, "Professor", yOffset: 2.15f);
+
+            // DIAGNOSTIC: confirm in the Console that the rig is wired.
+            // Schedule a one-frame deferred check so the Animator has had a
+            // tick to populate currentClipInfo.
+            StartCoroutine(LogAnimatorState());
+        }
+
+        private System.Collections.IEnumerator LogAnimatorState()
+        {
+            yield return null;
+            yield return null;
+            if (_animator == null)
+            {
+                Debug.LogError("[PaperProfessor] DIAG: _animator is NULL after BuildBody.");
+                yield break;
+            }
+            var clipInfo = _animator.GetCurrentAnimatorClipInfo(0);
+            string clipName = clipInfo.Length > 0 && clipInfo[0].clip != null ? clipInfo[0].clip.name : "<none>";
+            Debug.Log($"[PaperProfessor] DIAG: animator OK. controller={_animator.runtimeAnimatorController?.name} avatar={_animator.avatar?.name ?? "NULL"} avatarValid={_animator.avatar?.isValid} params={_animator.parameterCount} layers={_animator.layerCount} curClip='{clipName}' enabled={_animator.enabled} cullingMode={_animator.cullingMode} normalizedTime={_animator.GetCurrentAnimatorStateInfo(0).normalizedTime:F2}");
+
+            // Sample UpperArm.R three times across a second to see if Idle
+            // is actually driving the bones. If the rotation is identical
+            // each time, the clip plays in the Animator but doesn't reach
+            // the rig — that's the "static body" symptom.
+            if (_upperArmR != null)
+            {
+                Vector3 r1 = _upperArmR.localEulerAngles;
+                yield return new WaitForSeconds(0.4f);
+                Vector3 r2 = _upperArmR.localEulerAngles;
+                yield return new WaitForSeconds(0.4f);
+                Vector3 r3 = _upperArmR.localEulerAngles;
+                bool moving = Vector3.Distance(r1, r2) > 0.01f || Vector3.Distance(r2, r3) > 0.01f;
+                Debug.Log($"[PaperProfessor] DIAG bones: UpperArm.R t0={r1} t0.4={r2} t0.8={r3} moving={moving}");
+            }
+            else
+            {
+                Debug.LogWarning("[PaperProfessor] DIAG bones: _upperArmR is NULL — FindArmBones didn't find 'UpperArm.R' in the rig.");
+            }
         }
 
         private void FindArmBones(Transform root)
@@ -215,31 +253,48 @@ namespace Tigerverse.UI
 
         private void TryFireTrigger(int hash)
         {
-            if (_animator == null || _animator.runtimeAnimatorController == null)
-            {
-                Debug.LogWarning($"[PaperProfessor] TryFireTrigger({hash}) skipped — no animator/controller (animator={_animator}, controller={_animator?.runtimeAnimatorController}).");
-                return;
-            }
+            if (_animator == null || _animator.runtimeAnimatorController == null) return;
             foreach (var p in _animator.parameters)
             {
                 if (p.nameHash == hash)
                 {
-                    _animator.SetTrigger(hash);
-                    // Belt-and-suspenders: also call Animator.Play directly
-                    // on the destination state. SetTrigger only fires on
-                    // the *next* Animator update, and if any other state's
-                    // exit conditions consume the trigger first the
-                    // transition silently never happens. Animator.Play
-                    // forces the state change so the animation always plays.
+                    // Direct, deterministic playback — bypass the transition
+                    // graph entirely. SetTrigger relies on the controller's
+                    // Idle->X transition firing within ~1 frame and X->Idle
+                    // firing on hasExitTime; both are flaky after a runtime
+                    // Instantiate (Animator's first bind on a Generic rig
+                    // can swallow the first SetTrigger). Animator.Play forces
+                    // the state immediately, and we schedule the return to
+                    // Idle ourselves so the rig always settles back.
                     string stateName = p.name == "Speak" ? "Talk" : p.name;
-                    _animator.CrossFade(stateName, 0.08f, 0);
-                    Debug.Log($"[PaperProfessor] Animator: trigger '{p.name}' set + CrossFade('{stateName}'), cur clip='{(_animator.GetCurrentAnimatorClipInfo(0).Length>0?_animator.GetCurrentAnimatorClipInfo(0)[0].clip?.name:"<none>")}'");
+                    if (_returnToIdleCo != null) StopCoroutine(_returnToIdleCo);
+                    _animator.Play(stateName, 0, 0f);
+                    _animator.Update(0f);
+                    Debug.Log($"[PaperProfessor] Play('{stateName}'). cur clip='{(_animator.GetCurrentAnimatorClipInfo(0).Length>0?_animator.GetCurrentAnimatorClipInfo(0)[0].clip?.name:"<none>")}'");
+                    _returnToIdleCo = StartCoroutine(ReturnToIdleAfterClip());
                     return;
                 }
             }
-            var available = "";
-            foreach (var p in _animator.parameters) available += p.name + ",";
-            Debug.LogWarning($"[PaperProfessor] No animator parameter with hash {hash}. Available: [{available}]");
+        }
+
+        private Coroutine _returnToIdleCo;
+
+        private System.Collections.IEnumerator ReturnToIdleAfterClip()
+        {
+            // Wait one frame so the new state's clip info is populated.
+            yield return null;
+            float clipLen = 1f;
+            var info = _animator.GetCurrentAnimatorClipInfo(0);
+            if (info.Length > 0 && info[0].clip != null) clipLen = info[0].clip.length;
+            // Hold the action clip until ~85% then explicit cut to Idle
+            // so we don't depend on the controller's exit transition.
+            yield return new WaitForSeconds(clipLen * 0.85f);
+            if (_animator != null && _animator.runtimeAnimatorController != null)
+            {
+                _animator.Play("Idle", 0, 0f);
+                _animator.Update(0f);
+            }
+            _returnToIdleCo = null;
         }
 
         // Override the cached arm bones AFTER the Animator has run for the

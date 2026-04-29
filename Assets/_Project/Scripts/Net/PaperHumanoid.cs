@@ -116,6 +116,21 @@ namespace Tigerverse.Net
             _lastPos = transform.position;
             BodyRenderers = GetComponentsInChildren<Renderer>(includeInactive: true);
             _built = true;
+            StartCoroutine(LogAnimatorState(prefabName));
+        }
+
+        private System.Collections.IEnumerator LogAnimatorState(string variant)
+        {
+            yield return null;
+            yield return null;
+            if (_animator == null)
+            {
+                Debug.LogError($"[PaperHumanoid] DIAG ({variant}): _animator is NULL after BuildBody.");
+                yield break;
+            }
+            var clipInfo = _animator.GetCurrentAnimatorClipInfo(0);
+            string clipName = clipInfo.Length > 0 && clipInfo[0].clip != null ? clipInfo[0].clip.name : "<none>";
+            Debug.Log($"[PaperHumanoid] DIAG ({variant}): animator OK. controller={_animator.runtimeAnimatorController?.name} avatar={_animator.avatar?.name ?? "NULL"} valid={_animator.avatar?.isValid} params={_animator.parameterCount} curClip='{clipName}' enabled={_animator.enabled}");
         }
 
         /// <summary>
