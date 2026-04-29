@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace Tigerverse.UI
 {
+    [ExecuteAlways]
     public class PaperAmbience : MonoBehaviour
     {
         const int SampleRate = 22050;

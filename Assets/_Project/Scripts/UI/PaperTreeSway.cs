@@ -8,6 +8,7 @@ namespace Tigerverse.UI
     /// scene reads as alive without all trees moving in lockstep.
     /// </summary>
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperTreeSway : MonoBehaviour
     {
         [SerializeField] private float swayDegrees = 2f;

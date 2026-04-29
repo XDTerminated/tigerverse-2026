@@ -4,6 +4,7 @@ using System.Collections.Generic;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperLanterns : MonoBehaviour
     {
         private const int LanternCountMin = 5;

@@ -3,6 +3,7 @@ using UnityEngine;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperGroundDoodles : MonoBehaviour
     {
         private const int TexSize = 64;

@@ -4,6 +4,7 @@ using UnityEngine.Rendering;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperSkybox : MonoBehaviour
     {
         // Greyscale paper. No warmth, no color — just paper-light at the

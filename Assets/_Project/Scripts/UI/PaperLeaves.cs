@@ -3,6 +3,7 @@ using UnityEngine;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperLeaves : MonoBehaviour
     {
         private static PaperLeaves _instance;

@@ -4,6 +4,7 @@ using UnityEngine;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperFairies : MonoBehaviour
     {
         private static Texture2D _softTex;

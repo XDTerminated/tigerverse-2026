@@ -9,6 +9,7 @@ namespace Tigerverse.UI
     /// without shipping any external models.
     /// </summary>
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperFlora : MonoBehaviour
     {
         [SerializeField] private float radius = 6f;

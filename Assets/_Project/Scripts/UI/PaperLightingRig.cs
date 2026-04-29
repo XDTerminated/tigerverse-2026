@@ -5,6 +5,7 @@ using UnityEngine.Rendering;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperLightingRig : MonoBehaviour
     {
         Light _key;

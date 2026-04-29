@@ -4,6 +4,7 @@ using System.Collections.Generic;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperClouds : MonoBehaviour
     {
         private const int CloudCountMin = 6;

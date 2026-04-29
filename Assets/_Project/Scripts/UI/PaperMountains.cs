@@ -3,6 +3,7 @@ using UnityEngine;
 namespace Tigerverse.UI
 {
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public class PaperMountains : MonoBehaviour
     {
         private struct RingSpec
