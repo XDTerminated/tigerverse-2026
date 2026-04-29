@@ -176,9 +176,15 @@ namespace Tigerverse.UI
         {
             _speakT = Time.time;
             if (duration > 0f) speakDuration = duration;
-            // Procedurally clap (the Adventurer FBX has no clap clip) and
-            // play the matching clap audio. Three claps spread across
-            // ClapTotalDur, synced to the audio clap timings in ClapSfx.
+        }
+
+        /// <summary>
+        /// Praise the player for doing something good — three procedural
+        /// claps with matching audio. Distinct from SpeakingPulse so we
+        /// don't applaud every spoken line, only on success moments.
+        /// </summary>
+        public void Celebrate()
+        {
             _clapStartT = Time.time;
             ClapSfx.Play(transform.position + Vector3.up * 1.4f);
         }

@@ -69,6 +69,28 @@ namespace Tigerverse.Voice
         {
             if (config == null) config = BackendConfig.Load();
 
+            // macOS / iOS / WebGL all require explicit microphone authorization
+            // before Microphone.Start works. Without this call the OS prompt
+            // never appears and Microphone.devices may even return empty.
+            StartCoroutine(RequestMicAuthThenPick());
+        }
+
+        private IEnumerator RequestMicAuthThenPick()
+        {
+            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+            {
+                Debug.Log("[VoiceCommandRouter] Requesting microphone authorization...");
+                yield return Application.RequestUserAuthorization(UserAuthorization.Microphone);
+            }
+
+            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+            {
+                Debug.LogError("[VoiceCommandRouter] Microphone authorization DENIED. " +
+                    "On macOS, grant access in System Settings → Privacy & Security → Microphone (the app must be listed there). " +
+                    "If Unity isn't listed, restart Unity so it re-requests, or run a built player with NSMicrophoneUsageDescription set.");
+                yield break;
+            }
+
             PickMicDevice();
             // XR subsystems start a frame or two after Awake, so the first
             // pick can mis-detect whether we're really on a headset. Re-pick

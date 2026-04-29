@@ -28,7 +28,8 @@ namespace Tigerverse.UI
         public void Initialize(Transform parent, string speakerName, Texture2D portrait)
         {
             transform.SetParent(parent, false);
-            transform.localPosition = new Vector3(0f, 2.4f, 0f);
+            // Sit well above the Adventurer's head (model head ~y=1.83).
+            transform.localPosition = new Vector3(0f, 2.7f, 0f);
             transform.localRotation = Quaternion.identity;
 
             _card = new GameObject("DialogueCard");
@@ -36,51 +37,61 @@ namespace Tigerverse.UI
             _card.transform.localPosition = Vector3.zero;
 
             // Backing panel — single quad, panel texture, paper-cream tint.
+            // Sized to comfortably contain a 2-3 line speech bubble.
+            const float panelW = 1.8f;
+            const float panelH = 0.85f;
             var bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
             bg.name = "Backing";
             var bgCol = bg.GetComponent<Collider>(); if (bgCol != null) Destroy(bgCol);
             bg.transform.SetParent(_card.transform, false);
             bg.transform.localPosition = new Vector3(0f, 0f, 0.001f);
-            bg.transform.localScale = new Vector3(1.4f, 0.55f, 1f);
+            bg.transform.localScale = new Vector3(panelW, panelH, 1f);
             bg.GetComponent<Renderer>().sharedMaterial = MakePanelMaterial();
 
-            // Portrait — half above the panel's top edge, on the left.
+            // Portrait — top-left, partially overlapping panel edge.
+            float panelTop = panelH * 0.5f;
+            float panelLeft = -panelW * 0.5f;
             _portrait = GameObject.CreatePrimitive(PrimitiveType.Quad);
             _portrait.name = "Portrait";
             var portCol = _portrait.GetComponent<Collider>(); if (portCol != null) Destroy(portCol);
             _portrait.transform.SetParent(_card.transform, false);
-            _portrait.transform.localPosition = new Vector3(-0.55f, 0.18f, -0.002f);
-            _portrait.transform.localScale = new Vector3(0.20f, 0.20f, 1f);
+            _portrait.transform.localPosition = new Vector3(panelLeft + 0.18f, panelTop - 0.18f, -0.002f);
+            _portrait.transform.localScale = new Vector3(0.28f, 0.28f, 1f);
             _portrait.GetComponent<Renderer>().sharedMaterial = MakePortraitMaterial(portrait);
 
-            // Speaker name strip — top of panel body, right of portrait.
+            // Speaker name strip — right of portrait, just below panel top.
             var speakerGo = new GameObject("SpeakerName");
             speakerGo.transform.SetParent(_card.transform, false);
-            speakerGo.transform.localPosition = new Vector3(-0.05f, 0.17f, 0f);
+            speakerGo.transform.localPosition = new Vector3(panelLeft + 0.36f, panelTop - 0.10f, 0f);
             _speaker = speakerGo.AddComponent<TextMeshPro>();
             _speaker.text = speakerName ?? string.Empty;
-            _speaker.fontSize = 0.85f;
+            _speaker.fontSize = 0.95f;
             _speaker.fontStyle = FontStyles.Bold;
             _speaker.alignment = TextAlignmentOptions.Left;
             _speaker.color = SpeakerAccent;
             _speaker.enableWordWrapping = false;
             _speaker.font = LoadSophiecomicFont() ?? _speaker.font;
-            _speaker.rectTransform.sizeDelta = new Vector2(0.95f, 0.10f);
+            _speaker.rectTransform.pivot = new Vector2(0f, 0.5f);
+            _speaker.rectTransform.sizeDelta = new Vector2(panelW - 0.45f, 0.12f);
 
-            // Body text — centered within the panel body.
+            // Body text — fills the space below the speaker line, with a
+            // small inset so it doesn't touch panel edges.
             var bodyGo = new GameObject("Body");
             bodyGo.transform.SetParent(_card.transform, false);
-            bodyGo.transform.localPosition = new Vector3(0.05f, -0.05f, 0f);
+            float bodyTop = panelTop - 0.22f;
+            float bodyH   = panelH - 0.30f;
+            bodyGo.transform.localPosition = new Vector3(panelLeft + 0.10f, bodyTop, 0f);
             _body = bodyGo.AddComponent<TextMeshPro>();
             _body.text = string.Empty;
-            _body.fontSize = 0.75f;
+            _body.fontSize = 0.55f;
             _body.alignment = TextAlignmentOptions.TopLeft;
             _body.color = BodyInk;
             _body.outlineColor = new Color32(255, 255, 255, 220);
             _body.outlineWidth = 0.08f;
             _body.enableWordWrapping = true;
             _body.font = LoadSophiecomicFont() ?? _body.font;
-            _body.rectTransform.sizeDelta = new Vector2(1.15f, 0.42f);
+            _body.rectTransform.pivot = new Vector2(0f, 1f);
+            _body.rectTransform.sizeDelta = new Vector2(panelW - 0.20f, bodyH);
 
             _card.SetActive(true);
         }

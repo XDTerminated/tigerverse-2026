@@ -5,8 +5,10 @@ namespace Tigerverse.UI
     /// <summary>
     /// Plays a clap / applause sound at a world position. Loads
     /// Resources/Sfx/Clap if a wav is present, otherwise synthesizes a
-    /// short multi-burst clap with a band-limited mid-frequency body so
-    /// it reads as a hand clap rather than a generic noise click.
+    /// short multi-clap burst using a two-band physical model:
+    /// a sharp high-frequency transient (skin slap) plus a band-passed
+    /// mid-frequency body (palm cavity resonance), which together read
+    /// as real hands meeting rather than filtered noise.
     /// </summary>
     public static class ClapSfx
     {
@@ -29,43 +31,32 @@ namespace Tigerverse.UI
             return _clip;
         }
 
-        // Three-clap "small applause" burst. Each clap is band-passed white
-        // noise (1.5–4 kHz peak) with a sharp attack, decaying tail, and
-        // tiny early-reflection slap-back to imply a room. Reads as real
-        // hands meeting, not a click.
         private static AudioClip Synthesize()
         {
             const int sampleRate = 44100;
-            const float duration = 0.95f;
+            const float duration = 1.0f;
             int total = (int)(sampleRate * duration);
             var data  = new float[total];
             var rng = new System.Random(20260428);
 
-            // Three claps spaced ~180–220ms apart with mild amplitude variance.
-            float[] starts  = { 0.00f, 0.21f, 0.43f };
-            float[] amps    = { 1.00f, 0.85f, 0.70f };
+            // Three claps with slight timing jitter (real applause never
+            // hits perfect 200ms intervals) and per-clap pitch / amplitude
+            // variation so they don't sound like the same sample three times.
+            float[] starts = { 0.00f, 0.205f, 0.418f };
+            float[] amps   = { 1.00f, 0.88f, 0.74f };
+            float[] pitch  = { 1.00f, 1.06f, 0.93f };  // cavity resonance shift
 
             for (int b = 0; b < starts.Length; b++)
-                AddClap(data, sampleRate, (int)(starts[b] * sampleRate), amps[b], rng);
+                AddClap(data, sampleRate, (int)(starts[b] * sampleRate), amps[b], pitch[b], rng);
 
-            // Soft tail: small reverberant ring across the whole window so it
-            // doesn't feel anechoic. Just a tiny exponentially decaying noise
-            // floor mixed in at very low level.
+            // Soft saturation: rounds peaks, kills harshness, adds body.
             for (int i = 0; i < total; i++)
             {
-                float t = i / (float)sampleRate;
-                float room = (float)(rng.NextDouble() * 2.0 - 1.0) * 0.015f * Mathf.Exp(-t * 4f);
-                data[i] += room;
+                float x = data[i] * 1.2f;
+                data[i] = (float)System.Math.Tanh(x);
             }
 
-            // Soft saturation to tame peaks and add warmth.
-            for (int i = 0; i < total; i++)
-            {
-                float x = data[i];
-                data[i] = Mathf.Sign(x) * (1f - Mathf.Exp(-Mathf.Abs(x) * 1.4f));
-            }
-
-            // Normalize gently.
+            // Normalize to ~0.92 peak.
             float peak = 0f;
             for (int i = 0; i < total; i++) if (Mathf.Abs(data[i]) > peak) peak = Mathf.Abs(data[i]);
             if (peak > 0f)
@@ -79,53 +70,67 @@ namespace Tigerverse.UI
             return clip;
         }
 
-        // Adds a single clap into `data` starting at sample s0 with given amp.
-        private static void AddClap(float[] data, int sampleRate, int s0, float amp, System.Random rng)
+        // Single clap = transient + body + early reflection. The transient
+        // is a 1.5ms broadband impulse (the skin slap), the body is ~30ms
+        // of band-passed noise centered on a cavity resonance freq, and
+        // the early reflection is a 12ms-delayed quieter copy for room cue.
+        private static void AddClap(float[] data, int sampleRate, int s0, float amp, float pitch, System.Random rng)
         {
-            const float attack  = 0.0008f;
-            const float decay   = 0.045f;
-            float dur = attack + decay + 0.06f;
-            int len = (int)(dur * sampleRate);
-            int end = Mathf.Min(data.Length, s0 + len);
-
-            // Bandpass via simple state-variable filter (resonant, centered ~2.4kHz).
-            // Two cascaded one-pole highpass + one-pole lowpass approximates a
-            // bandpass cheaply without external DSP.
-            float lp = 0f, hp = 0f;
-            float lpA = ExpCoef(3500f, sampleRate);   // lowpass cutoff
-            float hpA = ExpCoef(800f,  sampleRate);   // highpass cutoff
-
-            for (int i = s0; i < end; i++)
+            // ---- Transient: ultra-fast hi-freq impulse (~1.5ms) ----
+            const float transientDur = 0.0015f;
+            int tLen = (int)(transientDur * sampleRate);
+            // Hipass through one-pole differential to keep only sparkle.
+            float prev = 0f;
+            for (int i = 0; i < tLen && (s0 + i) < data.Length; i++)
             {
-                float t = (i - s0) / (float)sampleRate;
-                float env;
-                if (t < attack) env = t / attack;
-                else            env = Mathf.Exp(-(t - attack) / decay);
-
+                float t = i / (float)sampleRate;
+                float env = 1f - (t / transientDur);   // fast linear ramp-down
                 float n = (float)(rng.NextDouble() * 2.0 - 1.0);
-                lp += lpA * (n - lp);
-                float bp = lp - hp;
-                hp += hpA * (lp - hp);
-                data[i] += bp * env * amp * 0.95f;
+                float hp = n - prev * 0.6f;            // crude hipass
+                prev = n;
+                data[s0 + i] += hp * env * amp * 0.55f;
             }
 
-            // Slap-back early reflection ~14ms later, ~30% level. Cheap room cue.
-            int slapOffset = (int)(0.014f * sampleRate);
-            int slapEnd = Mathf.Min(data.Length, s0 + slapOffset + len);
-            for (int i = s0 + slapOffset; i < slapEnd; i++)
-            {
-                float t = (i - (s0 + slapOffset)) / (float)sampleRate;
-                float env;
-                if (t < attack) env = t / attack;
-                else            env = Mathf.Exp(-(t - attack) / decay);
-                float n = (float)(rng.NextDouble() * 2.0 - 1.0);
-                data[i] += n * env * amp * 0.28f;
-            }
-        }
+            // ---- Body: band-passed noise (palm cavity resonance) ----
+            float bodyAttack = 0.001f;
+            float bodyDecay  = 0.028f * (1f / pitch); // higher pitch = faster decay (smaller cavity)
+            float bodyDur    = bodyAttack + bodyDecay + 0.04f;
+            int   bLen       = (int)(bodyDur * sampleRate);
 
-        private static float ExpCoef(float cutoffHz, int sampleRate)
-        {
-            return 1f - Mathf.Exp(-2f * Mathf.PI * cutoffHz / sampleRate);
+            // Resonant bandpass via a state-variable filter centered around
+            // 1500Hz * pitch. Real hand-claps peak in the 1.2–2.5kHz band.
+            float fc = 1500f * pitch;
+            float q  = 5.5f;                   // moderate resonance
+            float f  = 2f * Mathf.Sin(Mathf.PI * fc / sampleRate);
+            float qInv = 1f / q;
+            float low = 0f, band = 0f, high;
+
+            for (int i = 0; i < bLen && (s0 + i) < data.Length; i++)
+            {
+                float t = i / (float)sampleRate;
+                float env;
+                if (t < bodyAttack) env = t / bodyAttack;
+                else                env = Mathf.Exp(-(t - bodyAttack) / bodyDecay);
+
+                float input = (float)(rng.NextDouble() * 2.0 - 1.0);
+                // Two-pass SVF for steeper rolloff.
+                low  += f * band;
+                high  = input - low - qInv * band;
+                band += f * high;
+                low  += f * band;
+                high  = input - low - qInv * band;
+                band += f * high;
+
+                data[s0 + i] += band * env * amp * 0.85f;
+            }
+
+            // ---- Early reflection: 12ms slap-back at ~25%. Implies a small room. ----
+            int erDelay = (int)(0.012f * sampleRate);
+            for (int i = 0; i < bLen && (s0 + erDelay + i) < data.Length; i++)
+            {
+                float src = data[s0 + i];
+                data[s0 + erDelay + i] += src * 0.25f;
+            }
         }
     }
 }

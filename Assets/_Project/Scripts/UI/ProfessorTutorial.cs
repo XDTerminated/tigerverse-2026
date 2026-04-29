@@ -482,6 +482,11 @@ namespace Tigerverse.UI
                 inst.name = "CharacterBase";
                 inst.transform.localPosition = Vector3.zero;
                 inst.transform.localRotation = Quaternion.identity;
+                // CharacterBase has no animations, so add a procedural idle
+                // (bob + sway) to the wrapper so the dummy doesn't read as
+                // a frozen T-pose.
+                var idle = root.AddComponent<Tigerverse.UI.DummyIdle>();
+                idle.Bind(inst.transform);
             }
             else
             {
@@ -556,6 +561,10 @@ namespace Tigerverse.UI
             {
                 yield return SpeakLine("That's alright. Let me show you. Watch this.");
             }
+            else
+            {
+                _professor?.Celebrate();
+            }
 
             yield return PerformThunderBolt();
 
@@ -595,6 +604,7 @@ namespace Tigerverse.UI
             }
 
             if (_stopRequested) yield break;
+            _professor?.Celebrate();
             yield return SpeakLine("You've got the basics! Keep practicing on the dummy. Just shout any move name.");
         }
 
@@ -639,6 +649,10 @@ namespace Tigerverse.UI
             if (!_guidedMoveTriggered)
             {
                 yield return SpeakLine("That's alright, let me show you.");
+            }
+            else
+            {
+                _professor?.Celebrate();
             }
 
             // Fire the custom animation either way (player-cast or demo).
