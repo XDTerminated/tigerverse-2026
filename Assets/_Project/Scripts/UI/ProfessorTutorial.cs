@@ -41,9 +41,13 @@ namespace Tigerverse.UI
         [Tooltip("Vertical offset added to the practice dummy spawn so the FBX (whose pivot sits at the model's centre) stands on the floor instead of half-buried in it.")]
         [SerializeField] private float dummyVerticalOffset = 0f;
         [Tooltip("Vertical offset added to the borrowed scribble after auto-scaling so it floats at chest height instead of clipping the floor. Set to 0 to put it flush with the floor.")]
-        [SerializeField] private float borrowedScribbleVerticalOffset = 0f;
+        [SerializeField] private float borrowedScribbleVerticalOffset = 0.45f;
         [Tooltip("Extra yaw rotation (degrees) applied to the borrowed scribble after the auto-face-the-dummy rotation. Use this to flip a GLB whose authored forward axis points the wrong way.")]
-        [SerializeField] private float borrowedScribbleYawOffsetDeg = 180f;
+        [SerializeField] private float borrowedScribbleYawOffsetDeg = 90f;
+        [Tooltip("Extra PITCH rotation (degrees, X-axis) applied to the borrowed scribble.")]
+        [SerializeField] private float borrowedScribblePitchOffsetDeg = 90f;
+        [Tooltip("Extra ROLL rotation (degrees, Z-axis) applied to the borrowed scribble.")]
+        [SerializeField] private float borrowedScribbleRollOffsetDeg = 90f;
 
         [Header("Behaviour")]
         [SerializeField] private bool allowQandA = true;
@@ -54,6 +58,7 @@ namespace Tigerverse.UI
 
         // ─── Runtime ─────────────────────────────────────────────────────
         private PaperProfessor _professor;
+        private ProfessorWander _professorWander;
         private AudioSource    _audio;
         private bool           _stopRequested;
         private bool           _qaMode;
@@ -302,6 +307,10 @@ namespace Tigerverse.UI
             // Pop-in animation handled by PaperProfessor (added by another agent).
             StartCoroutine(_professor.PlaySpawnAnimation());
 
+            // Wander disabled per request — Professor stays put on the stage.
+            // (ProfessorWander.cs is kept around in case we want to re-enable
+            // it later; just re-add the AddComponent call here.)
+
             if (_dialogueBox == null)
             {
                 // RPG-style dialogue box (panel + portrait + speaker header +
@@ -450,12 +459,18 @@ namespace Tigerverse.UI
                     localContainer.transform.SetParent(transform, worldPositionStays: true);
                     localContainer.transform.position = _stageCenter - _stageForward * 0.5f + Vector3.up * borrowedScribbleVerticalOffset;
                     Vector3 localAwayFromPlayer = -_stageForward;
-                    Quaternion baseRot = (localAwayFromPlayer.sqrMagnitude > 1e-4f)
-                        ? Quaternion.LookRotation(localAwayFromPlayer, Vector3.up)
-                        : Quaternion.Euler(0, 90f, 0);
-                    // Yaw offset compensates for GLBs whose authored "front" is
-                    // -Z instead of +Z (common from Blender). Default 180°.
-                    localContainer.transform.rotation = baseRot * Quaternion.Euler(0f, borrowedScribbleYawOffsetDeg, 0f);
+                    // Build rotation directly from Euler angles so X/Y/Z are
+                    // directly settable in the inspector (composing with
+                    // LookRotation was bleeding non-zero Z into the final
+                    // rotation). The auto-yaw faces the dummy; the offsets
+                    // are added on top.
+                    float autoYawDeg = (localAwayFromPlayer.sqrMagnitude > 1e-4f)
+                        ? Mathf.Atan2(localAwayFromPlayer.x, localAwayFromPlayer.z) * Mathf.Rad2Deg
+                        : 0f;
+                    localContainer.transform.rotation = Quaternion.Euler(
+                        borrowedScribblePitchOffsetDeg,
+                        autoYawDeg + borrowedScribbleYawOffsetDeg,
+                        borrowedScribbleRollOffsetDeg);
                     // Smaller target than the GLB path (0.45 vs 0.55) — the
                     // fallback is a full humanoid, so we shrink it a bit so
                     // it reads as a creature instead of a tiny person.
@@ -463,6 +478,7 @@ namespace Tigerverse.UI
                     try { DrawingColorize.Apply(localContainer, MakeSolidTexture(new Color(0.95f, 0.85f, 0.55f)), 0f); }
                     catch (Exception e) { Debug.LogException(e); }
                     _borrowedScribble = localContainer;
+                    StartCoroutine(PopInScale(localContainer.transform, 0.55f));
                     Debug.Log($"[ProfessorTutorial] Using local test scribble model '{testScribbleResourcePath}' at {localContainer.transform.position}.");
                     yield break;
                 }
@@ -533,6 +549,7 @@ namespace Tigerverse.UI
             catch (Exception e) { Debug.LogException(e); }
 
             _borrowedScribble = container;
+            StartCoroutine(PopInScale(container.transform, 0.55f));
             Debug.Log($"[ProfessorTutorial] Borrowed scribble spawned at {container.transform.position} scale={container.transform.localScale.x:F2} childCount={container.transform.childCount}");
         }
 
@@ -573,7 +590,42 @@ namespace Tigerverse.UI
             var fb = root.AddComponent<DummyHitFeedback>();
             fb.Initialize();
 
+            // Apply the project's paper-craft material so the dummy reads as
+            // a scribble instead of a default grey humanoid. Null drawing
+            // texture → DrawingColorize falls back to the paper material
+            // with a neutral grey tint.
+            try { DrawingColorize.Apply(root, MakeSolidTexture(new Color(0.85f, 0.78f, 0.65f)), 0f); }
+            catch (Exception e) { Debug.LogException(e); }
+
             _dummy = root;
+
+            // Pop-in scale animation so the dummy doesn't just snap into the
+            // scene at full size.
+            StartCoroutine(PopInScale(root.transform, 0.55f));
+        }
+
+        // Reusable elastic pop-in: starts at scale 0, overshoots slightly,
+        // settles at the original scale. Used by SpawnDummy and the borrowed
+        // scribble spawn so both creatures appear with a beat of life
+        // instead of materialising fully formed.
+        private IEnumerator PopInScale(Transform t, float duration)
+        {
+            if (t == null) yield break;
+            Vector3 endScale = t.localScale;
+            t.localScale = Vector3.zero;
+            float elapsed = 0f;
+            while (elapsed < duration && t != null)
+            {
+                elapsed += Time.deltaTime;
+                float p = Mathf.Clamp01(elapsed / duration);
+                // Cubic ease-out + slight overshoot up to 1.12 then settle.
+                float k = 1f - Mathf.Pow(1f - p, 3f);
+                float scale = Mathf.Lerp(0f, 1.12f, k);
+                if (p > 0.85f) scale = Mathf.Lerp(1.12f, 1f, (p - 0.85f) / 0.15f);
+                t.localScale = endScale * scale;
+                yield return null;
+            }
+            if (t != null) t.localScale = endScale;
         }
 
         private static Transform MakePrim(Transform parent, PrimitiveType t, Material mat, string name, Vector3 pos, Vector3 scale, Quaternion? rot = null)
@@ -786,7 +838,7 @@ namespace Tigerverse.UI
             if (_borrowedScribble == null && _dummy == null) yield break;
 
             // Professor visibly casts the spell.
-            _professor?.Cast();
+            _professor?.Celebrate();
 
             // (Disabled — the Adventurer FBX's pointing clip read as the
             // Professor "whipping" his own scribble during the attack which
@@ -1062,7 +1114,7 @@ namespace Tigerverse.UI
         private IEnumerator PlayMoveAnimation(string moveKey)
         {
             // Professor visibly casts (Sword_Slash) whenever a move is demoed.
-            _professor?.Cast();
+            _professor?.Celebrate();
 
             string k = (moveKey ?? "").ToLowerInvariant().Trim();
             switch (k)

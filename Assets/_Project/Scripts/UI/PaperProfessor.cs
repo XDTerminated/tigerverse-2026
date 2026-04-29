@@ -48,6 +48,13 @@ namespace Tigerverse.UI
         private float _clapStartT = -10f;
         private const float ClapTotalDur = 0.7f;
 
+        // Hips bone — locked to its rest XZ each LateUpdate so the imported
+        // clips (Wave, Man_Clapping) don't visibly translate the rig forward
+        // and back via baked root-bone keyframes. Y is left free so any
+        // vertical bob in the clip still plays.
+        private Transform _hips;
+        private Vector3   _restHipsLocalPos;
+
         // Eased look-at-player state.
         private Camera    _cam;
         private float     _currentYaw;
@@ -60,6 +67,7 @@ namespace Tigerverse.UI
         private static readonly int CastHash  = Animator.StringToHash("Cast");
         private static readonly int HitHash   = Animator.StringToHash("Hit");
         private static readonly int PointHash = Animator.StringToHash("Point");
+        private static readonly int CheerHash = Animator.StringToHash("Cheer");
 
         /// <summary>
         /// Fires the "Point" trigger on the Adventurer animator. Wire a Point
@@ -115,6 +123,37 @@ namespace Tigerverse.UI
             if (_upperArmR != null) _restUpperR = _upperArmR.localRotation;
             if (_lowerArmL != null) _restLowerL = _lowerArmL.localRotation;
             if (_lowerArmR != null) _restLowerR = _lowerArmR.localRotation;
+
+            // Cache the Hips bone for runtime XZ lock. Try common names —
+            // KayKit / Quaternius / Mixamo rigs use different conventions.
+            _hips = FindByName(root, "Hips")
+                 ?? FindByName(root, "Hip")
+                 ?? FindByName(root, "Pelvis")
+                 ?? FindByName(root, "mixamorig:Hips")
+                 ?? FindByContains(root, "hip")
+                 ?? FindByContains(root, "pelvis")
+                 ?? FindByContains(root, "root");
+            if (_hips != null)
+            {
+                _restHipsLocalPos = _hips.localPosition;
+                Debug.Log($"[PaperProfessor] Hips bone resolved → '{_hips.name}' restLocal={_restHipsLocalPos}");
+            }
+            else
+            {
+                Debug.LogWarning("[PaperProfessor] Could not find Hips/Pelvis/Root bone for XZ lock — clip translations may drift the model.");
+            }
+        }
+
+        private static Transform FindByContains(Transform root, string substr)
+        {
+            string s = substr.ToLowerInvariant();
+            if (root.name.ToLowerInvariant().Contains(s)) return root;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var hit = FindByContains(root.GetChild(i), substr);
+                if (hit != null) return hit;
+            }
+            return null;
         }
 
         private static Transform FindByName(Transform root, string name)
@@ -185,15 +224,30 @@ namespace Tigerverse.UI
             if (duration > 0f) speakDuration = duration;
         }
 
+        /// <summary>True while the most recent SpeakingPulse window is still
+        /// active — used by ProfessorWander to suppress walking during
+        /// scripted lines.</summary>
+        public bool IsSpeaking => Time.time - _speakT < speakDuration;
+
         /// <summary>
-        /// Praise the player for doing something good — three procedural
-        /// claps with matching audio. Distinct from SpeakingPulse so we
-        /// don't applaud every spoken line, only on success moments.
+        /// Praise the player for doing something good — fires the Animator's
+        /// Speak trigger which now plays the real HumanArmature|Man_Clapping
+        /// clip retargeted onto the Adventurer rig (replaced the legacy
+        /// procedural arm-bone clap that was overriding the Animator pose).
         /// </summary>
         public void Celebrate()
         {
-            _clapStartT = Time.time;
-            ClapSfx.Play(transform.position + Vector3.up * 1.4f);
+            // Cheer trigger → Cheer state → Man_Clapping clip. Distinct from
+            // Speak (which plays the Wave clip on Talk state) so the spawn
+            // greeting and the cast clap don't collide.
+            bool hasParam = false;
+            if (_animator != null && _animator.runtimeAnimatorController != null)
+            {
+                foreach (var p in _animator.parameters)
+                    if (p.nameHash == CheerHash) { hasParam = true; break; }
+            }
+            Debug.Log($"[PaperProfessor] Celebrate() called. animator={(_animator != null ? "OK" : "NULL")} hasCheerParam={hasParam}");
+            TryFireTrigger(CheerHash);
         }
 
         /// <summary>
@@ -221,6 +275,39 @@ namespace Tigerverse.UI
         // 0.48 line up with the audio's three claps.
         private void LateUpdate()
         {
+            // Lock Hips XZ each frame so any baked root-bone translation in
+            // the imported clips (Wave / Man_Clapping) doesn't drift the rig
+            // forward. Y stays free so vertical bob in the clip plays.
+            if (_hips != null)
+            {
+                Vector3 p = _hips.localPosition;
+                p.x = _restHipsLocalPos.x;
+                p.z = _restHipsLocalPos.z;
+                _hips.localPosition = p;
+            }
+
+            // Force the Idle clip to loop. The KayKit FBX takes don't have
+            // Loop Time enabled in their import settings, so when the
+            // Animator ends up in the Idle state the clip plays once and
+            // freezes on the final frame. Restarting on overshoot keeps the
+            // Professor breathing instead of standing as a statue.
+            if (_animator != null && _animator.runtimeAnimatorController != null)
+            {
+                var state = _animator.GetCurrentAnimatorStateInfo(0);
+                if (state.IsName("Idle") && state.normalizedTime > 1f)
+                    _animator.Play("Idle", 0, 0f);
+
+                // Debug: log the current Animator state once per second so we
+                // can confirm in adb logcat whether the Professor is actually
+                // sitting in Idle or got stuck in a different state.
+                if (Time.frameCount % 60 == 0)
+                {
+                    AnimatorClipInfo[] clips = _animator.GetCurrentAnimatorClipInfo(0);
+                    string clipName = clips.Length > 0 && clips[0].clip != null ? clips[0].clip.name : "<none>";
+                    Debug.Log($"[PaperProfessor] State hash={state.fullPathHash} normTime={state.normalizedTime:F2} clip='{clipName}'");
+                }
+            }
+
             if (_clapStartT < 0f) return;
             float t = Time.time - _clapStartT;
             if (t > ClapTotalDur)
