@@ -160,12 +160,19 @@ namespace Tigerverse.UI
         {
             BuildScene();
             HideTitleSceneEggs();
+            // Spawn the full paper-craft scenery layer (skybox, mountains,
+            // clouds, lights, lanterns, fairies, flora, doodles, leaves,
+            // tree sway, ambient audio). All children are parented to the
+            // returned GameObject so OnDestroy below cleans them up.
+            _sceneEnhancer = Tigerverse.UI.PaperSceneEnhancer.Spawn(_stageCenter, Camera.main?.transform);
             // Switch the voice router into open-mic mode for the duration of
             // the tutorial so the player can just speak naturally — no
             // push-to-talk friction during practice or Q&A.
             if (voiceRouter != null) voiceRouter.SetOpenMicMode(true);
             StartCoroutine(RunTutorial());
         }
+
+        private GameObject _sceneEnhancer;
 
         // Hide every HatchingEggSequence in the scene while the tutorial
         // runs (the title scene preview-spawns one on the player's pad
@@ -195,6 +202,7 @@ namespace Tigerverse.UI
         private void OnDestroy()
         {
             RestoreHiddenEggs();
+            if (_sceneEnhancer != null) Destroy(_sceneEnhancer);
             if (voiceRouter != null)
             {
                 voiceRouter.OnTranscript.RemoveListener(OnPlayerSpoke);

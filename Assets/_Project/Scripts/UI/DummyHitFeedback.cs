@@ -79,6 +79,25 @@ namespace Tigerverse.UI
             ResolveHeadAnchor();
             BuildHPBar();
             _animator = GetComponentInChildren<Animator>();
+            // CRITICAL: a fresh Animator on a runtime-Instantiated prefab
+            // silently ignores SetTrigger / Play / CrossFade until Rebind
+            // is called. Without this the Hit/Die clips never fire.
+            if (_animator != null) _animator.Rebind();
+            StartCoroutine(LogAnimatorState());
+        }
+
+        private System.Collections.IEnumerator LogAnimatorState()
+        {
+            yield return null;
+            yield return null;
+            if (_animator == null)
+            {
+                Debug.LogError("[DummyHitFeedback] DIAG: _animator is NULL after Initialize.");
+                yield break;
+            }
+            var clipInfo = _animator.GetCurrentAnimatorClipInfo(0);
+            string clipName = clipInfo.Length > 0 && clipInfo[0].clip != null ? clipInfo[0].clip.name : "<none>";
+            Debug.Log($"[DummyHitFeedback] DIAG: animator OK. controller={_animator.runtimeAnimatorController?.name} avatar={_animator.avatar?.name ?? "NULL"} avatarValid={_animator.avatar?.isValid} params={_animator.parameterCount} layers={_animator.layerCount} curClip='{clipName}' enabled={_animator.enabled} cullingMode={_animator.cullingMode}");
         }
 
         private bool AnimatorHasParam(int hash)
@@ -122,17 +141,43 @@ namespace Tigerverse.UI
 
             SpawnDamageNumber(damage, tint);
 
-            // Trigger the Hoodie's HitRecieve clip via the Animator. On
-            // the wrap-to-full edge case (HP would have dropped to 0), play
-            // Death once for an extra-dramatic reaction before the wrap.
-            if (wrapped && AnimatorHasParam(DieHash))
+            // Direct Play to force the state — SetTrigger and the
+            // controller's transition graph have proven unreliable after
+            // a runtime Instantiate on Generic rigs.
+            if (_animator != null && _animator.runtimeAnimatorController != null)
             {
-                _animator.SetTrigger(DieHash);
+                if (wrapped && AnimatorHasParam(DieHash))
+                {
+                    if (_returnToIdleCo != null) StopCoroutine(_returnToIdleCo);
+                    _animator.Play("Die", 0, 0f);
+                    _animator.Update(0f);
+                    _returnToIdleCo = StartCoroutine(ReturnToIdleAfterClip());
+                }
+                else if (AnimatorHasParam(HitHash))
+                {
+                    if (_returnToIdleCo != null) StopCoroutine(_returnToIdleCo);
+                    _animator.Play("Hit", 0, 0f);
+                    _animator.Update(0f);
+                    _returnToIdleCo = StartCoroutine(ReturnToIdleAfterClip());
+                }
             }
-            else if (AnimatorHasParam(HitHash))
+        }
+
+        private Coroutine _returnToIdleCo;
+
+        private System.Collections.IEnumerator ReturnToIdleAfterClip()
+        {
+            yield return null;
+            float clipLen = 1f;
+            var info = _animator.GetCurrentAnimatorClipInfo(0);
+            if (info.Length > 0 && info[0].clip != null) clipLen = info[0].clip.length;
+            yield return new WaitForSeconds(clipLen * 0.85f);
+            if (_animator != null && _animator.runtimeAnimatorController != null)
             {
-                _animator.SetTrigger(HitHash);
+                _animator.Play("Idle", 0, 0f);
+                _animator.Update(0f);
             }
+            _returnToIdleCo = null;
         }
 
         // ─── Renderer caching ───────────────────────────────────────────
