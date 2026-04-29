@@ -46,6 +46,7 @@ namespace Tigerverse.Voice
         private bool       isRecording;
         private bool       triggerWasPressed;
         private bool       spaceWasPressed;
+        private bool       _fKeyWasPressed;
         private AudioClip  currentClip;
         private string     micDeviceName;
 
@@ -106,29 +107,53 @@ namespace Tigerverse.Voice
             StartCoroutine(RepickAfterXrInit());
         }
 
-        // Quick open-and-close on the picked mic so macOS shows its
-        // permission dialog and we discover sample-rate problems early
-        // rather than at the moment the player actually tries to speak.
+        // Hold the mic open long enough for macOS to register Unity in its
+        // permission list AND for us to verify audio is actually flowing.
+        // ~1.5 s is well past the OS's "is this app really using the mic?"
+        // grace period, and gives us a sample window large enough to compute
+        // a meaningful peak amplitude.
         private IEnumerator WarmUpMicrophone()
         {
             if (string.IsNullOrEmpty(micDeviceName)) yield break;
 
             int rate = ResolveSupportedRate(micDeviceName, sampleRate);
-            var clip = Microphone.Start(micDeviceName, true, 1, rate);
+            Debug.Log($"[VoiceCommandRouter] Warming up mic '{micDeviceName}' @ {rate}Hz for 1.5s — this is when macOS will prompt for permission if it hasn't already.");
+            var clip = Microphone.Start(micDeviceName, true, 2, rate);
             if (clip == null)
             {
-                Debug.LogError($"[VoiceCommandRouter] Microphone.Start warm-up returned null for '{micDeviceName}' @ {rate}Hz. " +
-                    "On macOS, check System Settings → Privacy & Security → Microphone and ensure Unity (or the built player) is listed and toggled on. " +
-                    "If Unity isn't listed at all, fully quit Unity and reopen — the OS only adds it after a Microphone.Start attempt with NSMicrophoneUsageDescription set.");
+                Debug.LogError($"[VoiceCommandRouter] Microphone.Start warm-up returned NULL for '{micDeviceName}' @ {rate}Hz. " +
+                    "macOS users: open System Settings → Privacy & Security → Microphone. If Unity is listed but OFF, turn it ON and restart Unity. " +
+                    "If Unity is NOT listed at all, fully quit Unity (cmd+Q) and reopen — the OS only adds Unity after a successful Microphone.Start with NSMicrophoneUsageDescription set.");
                 yield break;
             }
 
-            // Drain a few frames so the device actually opens, then close.
-            yield return null;
-            yield return null;
+            // Hold the mic open for ~1.5s.
+            float holdUntil = Time.unscaledTime + 1.5f;
+            while (Time.unscaledTime < holdUntil) yield return null;
+
+            // Sample what we captured. If everything is zero, we have a
+            // permission problem (macOS routes silence to denied apps).
+            int total = clip.samples;
+            int probe = Mathf.Min(total, rate); // last second
+            int startIdx = (Microphone.GetPosition(micDeviceName) - probe + total) % total;
+            var buf = new float[probe];
+            clip.GetData(buf, startIdx);
+            float peak = 0f;
+            for (int i = 0; i < buf.Length; i++) if (Mathf.Abs(buf[i]) > peak) peak = Mathf.Abs(buf[i]);
+
             try { Microphone.End(micDeviceName); } catch { }
-            Debug.Log($"[VoiceCommandRouter] Mic warm-up succeeded on '{micDeviceName}' @ {rate}Hz.");
             sampleRate = rate;
+
+            if (peak < 1e-5f)
+            {
+                Debug.LogError($"[VoiceCommandRouter] Mic warm-up captured pure silence (peak={peak:F6}) on '{micDeviceName}'. " +
+                    "macOS likely DENIED microphone access. Fix: System Settings → Privacy & Security → Microphone → enable Unity, then restart Unity. " +
+                    "If Unity isn't listed, fully quit Unity (cmd+Q) and reopen.");
+            }
+            else
+            {
+                Debug.Log($"[VoiceCommandRouter] Mic warm-up OK on '{micDeviceName}' @ {rate}Hz (peak={peak:F4}). Audio is flowing.");
+            }
         }
 
         // Some macOS input devices (esp. AirPods / built-in array mics) reject
@@ -270,11 +295,11 @@ namespace Tigerverse.Voice
         [Tooltip("If true, the router uses VAD: continuously listens, fires the transcription the instant the player stops speaking, no chunk timer.")]
         [SerializeField] private bool openMicMode = false;
         [Tooltip("RMS amplitude required to BEGIN counting as 'speaking' (0..1). Should be ABOVE typical room noise.")]
-        [SerializeField] private float vadStartThreshold = 0.006f;
+        [SerializeField] private float vadStartThreshold = 0.004f;
         [Tooltip("Once speech has started, RMS must drop below THIS to count as silence (hysteresis). Should be lower than vadStartThreshold.")]
-        [SerializeField] private float vadContinueThreshold = 0.003f;
-        [Tooltip("How long the player must stay quiet after speaking before the utterance is sent for transcription.")]
-        [SerializeField] private float vadEndSilenceSec = 0.18f;
+        [SerializeField] private float vadContinueThreshold = 0.0018f;
+        [Tooltip("How long the player must stay quiet after speaking before the utterance is sent for transcription. Longer = full multi-word phrases get sent as one chunk instead of split into single words.")]
+        [SerializeField] private float vadEndSilenceSec = 0.45f;
         [Tooltip("Window of recent audio (ms) analysed for RMS each tick.")]
         [SerializeField] private int   vadWindowMs = 60;
         [Tooltip("Minimum utterance length before sending (s). Prevents random clicks from being transcribed.")]
@@ -378,6 +403,22 @@ namespace Tigerverse.Voice
             }
 #endif
 
+            // ─── F-key force-record diagnostic override ──────────────────
+            // Works in BOTH open-mic and push-to-talk modes. Use this if
+            // VAD isn't catching what you say — pressing F holds the mic
+            // for 4s, sends one chunk to transcription, and logs the
+            // result. Helps isolate VAD problems from API problems.
+            bool fNow = UnityEngine.InputSystem.Keyboard.current != null
+                && UnityEngine.InputSystem.Keyboard.current.fKey.isPressed;
+            if (fNow && !_fKeyWasPressed)
+            {
+                Debug.Log("[VoiceCommandRouter] F-key force-record: bypassing VAD, recording 4s.");
+                if (_vadStarted) StopVad();
+                BeginRecord();
+                _autoStopAt = Time.unscaledTime + 4f;
+            }
+            _fKeyWasPressed = fNow;
+
             // ─── Open-mic / VAD path ─────────────────────────────────────
             if (openMicMode)
             {
@@ -386,6 +427,12 @@ namespace Tigerverse.Voice
                     // Mic stays running (avoids the per-line Quest hitch),
                     // we just skip the analysis tick so nothing gets
                     // transcribed during TTS playback.
+                    return;
+                }
+                if (isRecording && !_vadStarted)
+                {
+                    // Force-record path: let it auto-stop, don't touch VAD.
+                    if (Time.unscaledTime >= _autoStopAt) EndRecord();
                     return;
                 }
                 VadTick();
@@ -465,6 +512,10 @@ namespace Tigerverse.Voice
             }
         }
 
+        // Heartbeat log so the user can SEE on the Console whether mic
+        // samples are actually flowing — the #1 mac diagnostic.
+        private float _lastRmsLogAt;
+
         private void VadTick()
         {
             if (!_vadStarted) StartVad();
@@ -486,6 +537,16 @@ namespace Tigerverse.Voice
             for (int i = 0; i < win; i++) sumSq += _vadAnalysisBuf[i] * _vadAnalysisBuf[i];
             float rms = Mathf.Sqrt(sumSq / win);
 
+            // Heartbeat — once per second log RMS so you can SEE in the
+            // Console whether the mic is delivering audio at all. If this
+            // value stays at 0.0000 you have a permission / device problem,
+            // not a threshold problem.
+            if (Time.unscaledTime - _lastRmsLogAt > 1.0f)
+            {
+                _lastRmsLogAt = Time.unscaledTime;
+                Debug.Log($"[VoiceCommandRouter] mic RMS={rms:F4} (start>{vadStartThreshold:F4} continue>{vadContinueThreshold:F4}) muted={_muted} dev='{micDeviceName}'");
+            }
+
             // Hysteresis: use higher threshold to BEGIN, lower to STAY.
             // This prevents word-mid-syllable RMS dips from prematurely
             // ending the utterance.
@@ -498,7 +559,7 @@ namespace Tigerverse.Voice
                 {
                     _vadInSpeech = true;
                     _vadSpeechStartPos = startSample;
-                    // Speech-START log silenced, kept too noisy in VR.
+                    Debug.Log($"[VoiceCommandRouter] VAD speech START (rms={rms:F4})");
                 }
                 _vadLastSpeechPos = currentPos;
             }
@@ -510,6 +571,7 @@ namespace Tigerverse.Voice
                 {
                     int speechLen = (_vadLastSpeechPos - _vadSpeechStartPos + total) % total;
                     float utteranceSec = speechLen / (float)sampleRate;
+                    Debug.Log($"[VoiceCommandRouter] VAD speech END (utteranceSec={utteranceSec:F2}, min={vadMinUtteranceSec:F2})");
                     if (utteranceSec >= vadMinUtteranceSec)
                     {
                         // Add a small head + tail pad (50 ms each side) so we

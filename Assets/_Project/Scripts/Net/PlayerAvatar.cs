@@ -102,6 +102,10 @@ namespace Tigerverse.Net
                 humanoid.leftHandSrc  = leftHandVisual;
                 humanoid.rightHandSrc = rightHandVisual;
                 humanoid.SetBodyColor(tint, accent);
+                // Player 0 = boy (MaleCasual, cyan tint), Player 1 = girl
+                // (Casual, pink tint). Deterministic so each peer sees
+                // the same character on each slot.
+                humanoid.SetVariant(pid == 0 ? "MaleCasual" : "Casual");
                 // PlayerId is 0-based; show 1-based slot in the floating tag.
                 humanoid.SetDisplayName($"Player {pid + 1}");
             }

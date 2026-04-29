@@ -34,6 +34,8 @@ namespace Tigerverse.UI
         [Header("Practice fight")]
         [Tooltip("Cached UploadThing GLB used as the Professor's borrowed scribble during the practice fight.")]
         [SerializeField] private string borrowedScribbleGlbUrl = "https://ueggfh303j.ufs.sh/f/hqoaI3f7pqQl6koHkKXdhzSPI8ykOc45FrwKeWNpJfbAYMB6";
+        [Tooltip("Local fallback test model loaded from Resources/. Used as the borrowed scribble if it can be found; the GLB download is only attempted if this load fails. Default: a generic untextured humanoid that ships with the project.")]
+        [SerializeField] private string testScribbleResourcePath = "Characters/CharacterBase";
         [Tooltip("How long the player has to say THUNDER BOLT before the dummy 'wins' anyway and we move on.")]
         [SerializeField] private float practiceListenWindowSec = 12f;
         [Tooltip("Vertical offset added to the practice dummy spawn so the FBX (whose pivot sits at the model's centre) stands on the floor instead of half-buried in it.")]
@@ -143,9 +145,14 @@ namespace Tigerverse.UI
             _audio.bypassReverbZones     = true;
         }
 
+        // Hatching eggs we hid on tutorial start so they don't sit in the
+        // player's view while the Professor lectures. Restored OnDestroy.
+        private System.Collections.Generic.List<GameObject> _hiddenEggs;
+
         private void Start()
         {
             BuildScene();
+            HideTitleSceneEggs();
             // Switch the voice router into open-mic mode for the duration of
             // the tutorial so the player can just speak naturally — no
             // push-to-talk friction during practice or Q&A.
@@ -153,8 +160,34 @@ namespace Tigerverse.UI
             StartCoroutine(RunTutorial());
         }
 
+        // Hide every HatchingEggSequence in the scene while the tutorial
+        // runs (the title scene preview-spawns one on the player's pad
+        // and it ended up framed in the same shot as the Professor).
+        private void HideTitleSceneEggs()
+        {
+            var eggs = FindObjectsByType<HatchingEggSequence>(FindObjectsSortMode.None);
+            _hiddenEggs = new System.Collections.Generic.List<GameObject>(eggs.Length);
+            foreach (var e in eggs)
+            {
+                if (e == null || !e.gameObject.activeSelf) continue;
+                _hiddenEggs.Add(e.gameObject);
+                e.gameObject.SetActive(false);
+            }
+        }
+
+        private void RestoreHiddenEggs()
+        {
+            if (_hiddenEggs == null) return;
+            foreach (var go in _hiddenEggs)
+            {
+                if (go != null) go.SetActive(true);
+            }
+            _hiddenEggs = null;
+        }
+
         private void OnDestroy()
         {
+            RestoreHiddenEggs();
             if (voiceRouter != null)
             {
                 voiceRouter.OnTranscript.RemoveListener(OnPlayerSpoke);
@@ -276,10 +309,19 @@ namespace Tigerverse.UI
                 // LateUpdate to face the player.
                 var dialogueGo = new GameObject("ProfessorDialogue");
                 _dialogueBox = dialogueGo.AddComponent<RPGDialogueBox>();
-                _dialogueBox.Initialize(profGo.transform, "Professor Pastel",
-                    Resources.Load<Texture2D>("face"));
+                // Pass null so the dialogue box bakes a headshot from the
+                // Adventurer model itself instead of the doodle smiley.
+                _dialogueBox.Initialize(profGo.transform, "Professor Pastel", null);
                 _dialogueBox.Hide();
             }
+
+            // Visual atmosphere: warm key light, paper-cream stage ring on
+            // the floor, drifting motes, and a faint mist puff. Purely
+            // cosmetic. The component cleans itself up on parent destroy.
+            var atmosphereGo = new GameObject("StageAtmosphere");
+            atmosphereGo.transform.SetParent(transform, worldPositionStays: true);
+            var atmosphere = atmosphereGo.AddComponent<TutorialStageAtmosphere>();
+            atmosphere.Setup(_stageCenter, _stageForward);
         }
 
         // Picks the stage center / orientation ONCE at tutorial start, so
@@ -392,6 +434,37 @@ namespace Tigerverse.UI
         // ─── Practice fight ─────────────────────────────────────────────
         private IEnumerator LoadBorrowedScribble()
         {
+            // Prefer a local test model from Resources/ if one is configured.
+            // The UploadThing GLB has been flaky (404s) so this keeps the
+            // practice fight working offline / in dev. The GLB path below
+            // only runs if this Resources load returns null.
+            if (!string.IsNullOrEmpty(testScribbleResourcePath))
+            {
+                var testPrefab = Resources.Load<GameObject>(testScribbleResourcePath);
+                if (testPrefab != null)
+                {
+                    var localContainer = Instantiate(testPrefab);
+                    localContainer.name = "BorrowedScribble";
+                    localContainer.transform.SetParent(transform, worldPositionStays: true);
+                    localContainer.transform.position = _stageCenter - _stageForward * 0.5f + Vector3.up * borrowedScribbleVerticalOffset;
+                    Vector3 localAwayFromPlayer = -_stageForward;
+                    if (localAwayFromPlayer.sqrMagnitude > 1e-4f)
+                        localContainer.transform.rotation = Quaternion.LookRotation(localAwayFromPlayer, Vector3.up);
+                    else
+                        localContainer.transform.rotation = Quaternion.Euler(0, 90f, 0);
+                    // Smaller target than the GLB path (0.45 vs 0.55) — the
+                    // fallback is a full humanoid, so we shrink it a bit so
+                    // it reads as a creature instead of a tiny person.
+                    AutoScale(localContainer.transform, 0.45f);
+                    try { DrawingColorize.Apply(localContainer, MakeSolidTexture(new Color(0.95f, 0.85f, 0.55f)), 0f); }
+                    catch (Exception e) { Debug.LogException(e); }
+                    _borrowedScribble = localContainer;
+                    Debug.Log($"[ProfessorTutorial] Using local test scribble model '{testScribbleResourcePath}' at {localContainer.transform.position}.");
+                    yield break;
+                }
+                Debug.LogWarning($"[ProfessorTutorial] Test scribble Resources path '{testScribbleResourcePath}' not found; falling back to GLB download.");
+            }
+
             if (string.IsNullOrEmpty(borrowedScribbleGlbUrl)) yield break;
 
             byte[] glbBytes = null;
@@ -478,23 +551,23 @@ namespace Tigerverse.UI
             else
                 root.transform.rotation = Quaternion.Euler(0, 90f, 0);
 
-            var prefab = Resources.Load<GameObject>("Characters/CharacterBase");
+            // Hoodie has built-in Idle animation via its Animator, so we
+            // don't need the procedural DummyIdle bob/sway here.
+            var prefab = Resources.Load<GameObject>("Characters/Hoodie");
             if (prefab != null)
             {
                 var inst = Instantiate(prefab, root.transform);
-                inst.name = "CharacterBase";
+                inst.name = "Hoodie";
                 inst.transform.localPosition = Vector3.zero;
                 inst.transform.localRotation = Quaternion.identity;
-                // CharacterBase has no animations, so add a procedural idle
-                // (bob + sway) to the wrapper so the dummy doesn't read as
-                // a frozen T-pose.
-                var idle = root.AddComponent<Tigerverse.UI.DummyIdle>();
-                idle.Bind(inst.transform);
             }
             else
             {
-                Debug.LogError("[ProfessorTutorial] Missing Resources/Characters/CharacterBase.prefab");
+                Debug.LogError("[ProfessorTutorial] Missing Resources/Characters/Hoodie.prefab");
             }
+
+            var fb = root.AddComponent<DummyHitFeedback>();
+            fb.Initialize();
 
             _dummy = root;
         }
@@ -708,6 +781,9 @@ namespace Tigerverse.UI
         {
             if (_borrowedScribble == null && _dummy == null) yield break;
 
+            // Professor visibly casts the spell.
+            _professor?.Cast();
+
             // Quick "wind-up" on the borrowed scribble — small jump.
             if (_borrowedScribble != null)
             {
@@ -723,15 +799,54 @@ namespace Tigerverse.UI
                 _borrowedScribble.transform.localPosition = startPos;
             }
 
-            // Lightning particle burst from scribble to dummy.
+            // Pre-flash: bright burst of light right as the bolt fires.
+            SpawnLightningPreFlash();
+
+            // Main lightning particle burst from scribble to dummy.
             SpawnLightningEffect();
+
+            // Secondary forks branching off the main bolt.
+            SpawnLightningForks();
+
+            // Brief screen-shake (Camera.main jitter for ~0.15s).
+            StartCoroutine(CameraShake(0.15f, 0.04f));
 
             // Dummy reels but STAYS STANDING. No fall-over, no respawn —
             // the player will keep practicing on this same dummy through
             // the guided tutorial and the freeform continuous practice.
-            yield return PunchScale(_dummy, 0.18f, 0.15f);
+            if (_dummy != null) _dummy.GetComponent<DummyHitFeedback>()?.OnHit(new Color(0.40f, 0.65f, 1.0f), 12f);
+
+            // Ground sparks at the dummy's feet on impact.
+            SpawnGroundSparks();
+
+            yield return PunchScale(_dummy, 0.20f, 0.15f);
 
             yield return new WaitForSeconds(0.2f);
+        }
+
+        // Quick camera jitter — translates Camera.main on local axes by a
+        // small random amount each frame, then restores its starting offset.
+        // Runs in parallel; safe if the camera is already being driven by
+        // an XR rig (we restore to the original local position at the end).
+        private IEnumerator CameraShake(float duration, float magnitude)
+        {
+            var cam = Camera.main;
+            if (cam == null) yield break;
+            var tr = cam.transform;
+            Vector3 origin = tr.localPosition;
+            float t = 0f;
+            while (t < duration && cam != null)
+            {
+                t += Time.deltaTime;
+                float falloff = 1f - Mathf.Clamp01(t / duration);
+                Vector3 jitter = new Vector3(
+                    UnityEngine.Random.Range(-1f, 1f),
+                    UnityEngine.Random.Range(-1f, 1f),
+                    UnityEngine.Random.Range(-1f, 1f)) * magnitude * falloff;
+                tr.localPosition = origin + jitter;
+                yield return null;
+            }
+            if (cam != null) tr.localPosition = origin;
         }
 
         // Reusable scale-punch hit reaction. Dummy stays standing.
@@ -868,6 +983,7 @@ namespace Tigerverse.UI
                 if (m != null) color = BurstColorForElement(m.element);
             }
             SpawnColoredBurst(color);
+            if (_dummy != null) _dummy.GetComponent<DummyHitFeedback>()?.OnHit(color, 12f);
             yield return PunchScale(_dummy, 0.18f, 0.15f);
         }
 
@@ -936,6 +1052,9 @@ namespace Tigerverse.UI
         // the default falls back to the colored burst.
         private IEnumerator PlayMoveAnimation(string moveKey)
         {
+            // Professor visibly casts (Sword_Slash) whenever a move is demoed.
+            _professor?.Cast();
+
             string k = (moveKey ?? "").ToLowerInvariant().Trim();
             switch (k)
             {
@@ -1019,9 +1138,9 @@ namespace Tigerverse.UI
             return (go, ps, psr, mat);
         }
 
-        // FIREBALL — two-stage: glowing orb travels scribble->dummy, then
-        // explodes into a ring of orange/red sparks on impact. Sphere-shape
-        // burst (not stretched like lightning).
+        // FIREBALL — multi-layer: glowing orb + ember trail + heat-shimmer
+        // halo travels scribble->dummy, then explodes into a radial ring,
+        // an outward shockwave, and a slow smoke puff that rises after.
         private IEnumerator PerformFireball()
         {
             if (!TryGetCastEndpoints(out var origin, out var target)) yield break;
@@ -1029,8 +1148,11 @@ namespace Tigerverse.UI
             yield return ScribbleWindup(0.30f, 0.05f, 0.18f);
             if (!TryGetCastEndpoints(out origin, out target)) yield break;
 
-            Color hot   = new Color(1.0f, 0.55f, 0.15f);
-            Color core  = new Color(1.0f, 0.85f, 0.40f);
+            Color hot    = new Color(1.0f, 0.55f, 0.15f);
+            Color core   = new Color(1.0f, 0.85f, 0.40f);
+            Color deep   = new Color(0.85f, 0.20f, 0.05f);
+            Color shimmer = new Color(1.0f, 0.75f, 0.35f, 0.35f);
+            Color smoke  = new Color(0.18f, 0.16f, 0.14f, 0.85f);
 
             // Stage 1: orb (a small lit sphere) travels from origin to target.
             var orb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -1038,12 +1160,24 @@ namespace Tigerverse.UI
             var col = orb.GetComponent<Collider>(); if (col != null) Destroy(col);
             orb.transform.SetParent(transform, worldPositionStays: true);
             orb.transform.position = origin;
-            orb.transform.localScale = Vector3.one * 0.18f;
+            orb.transform.localScale = Vector3.one * 0.22f;
             var orbSh = Shader.Find("Universal Render Pipeline/Lit");
             var orbMat = new Material(orbSh);
             if (orbMat.HasProperty("_BaseColor")) orbMat.SetColor("_BaseColor", core);
-            if (orbMat.HasProperty("_EmissionColor")) { orbMat.EnableKeyword("_EMISSION"); orbMat.SetColor("_EmissionColor", hot * 4f); }
+            if (orbMat.HasProperty("_EmissionColor")) { orbMat.EnableKeyword("_EMISSION"); orbMat.SetColor("_EmissionColor", hot * 6f); }
             orb.GetComponent<Renderer>().sharedMaterial = orbMat;
+
+            // Outer halo orb — slightly larger, brighter, additive-feel.
+            var halo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            halo.name = "FireHalo";
+            var hcol = halo.GetComponent<Collider>(); if (hcol != null) Destroy(hcol);
+            halo.transform.SetParent(orb.transform, worldPositionStays: false);
+            halo.transform.localPosition = Vector3.zero;
+            halo.transform.localScale = Vector3.one * 1.7f;
+            var haloMat = new Material(orbSh);
+            if (haloMat.HasProperty("_BaseColor")) haloMat.SetColor("_BaseColor", new Color(hot.r, hot.g, hot.b, 0.35f));
+            if (haloMat.HasProperty("_EmissionColor")) { haloMat.EnableKeyword("_EMISSION"); haloMat.SetColor("_EmissionColor", hot * 3f); }
+            halo.GetComponent<Renderer>().sharedMaterial = haloMat;
 
             // Trailing embers behind the orb (sphere shape, billboard).
             var trail = BuildFx("FireballTrail", origin, target, hot);
@@ -1051,21 +1185,57 @@ namespace Tigerverse.UI
                 var main = trail.ps.main;
                 main.playOnAwake = false;
                 main.duration = 0.6f; main.loop = true;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.20f, 0.45f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.2f, 0.8f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.65f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.2f, 1.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.07f, 0.18f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(hot, core);
-                main.maxParticles  = 80;
+                main.maxParticles  = 160;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = -0.4f; // embers float upward
                 trail.psr.renderMode = ParticleSystemRenderMode.Billboard;
                 var emission = trail.ps.emission;
                 emission.enabled = true;
-                emission.rateOverTime = 90f;
+                emission.rateOverTime = 160f;
                 var shape = trail.ps.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Sphere;
-                shape.radius = 0.08f;
+                shape.radius = 0.10f;
+                var col2 = trail.ps.colorOverLifetime;
+                col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(core, 0f), new GradientColorKey(hot, 0.5f), new GradientColorKey(deep, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.7f, 0.6f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                var size = trail.ps.sizeOverLifetime;
+                size.enabled = true;
+                size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 1f, 1f, 0.2f));
                 trail.ps.Play();
+            }
+
+            // Heat-shimmer ring — soft, slow, transparent particles around the orb.
+            var shimFx = BuildFx("FireballShimmer", origin, target, shimmer);
+            {
+                var main = shimFx.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.6f; main.loop = true;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.7f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.05f, 0.30f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.18f, 0.36f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(shimmer);
+                main.maxParticles  = 60;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                shimFx.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = shimFx.ps.emission; emission.enabled = true; emission.rateOverTime = 50f;
+                var shape = shimFx.ps.shape; shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.18f;
+                var col2 = shimFx.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                    new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(0.4f, 0.4f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                shimFx.ps.Play();
             }
 
             float travelDur = 0.40f, t = 0f;
@@ -1074,41 +1244,113 @@ namespace Tigerverse.UI
                 t += Time.deltaTime;
                 float k = Mathf.Clamp01(t / travelDur);
                 Vector3 pos = Vector3.Lerp(origin, target, k);
+                // Slight pulsing scale for the orb so it reads as flickering.
+                float pulse = 1f + 0.10f * Mathf.Sin(t * 32f);
                 orb.transform.position = pos;
+                orb.transform.localScale = Vector3.one * 0.22f * pulse;
                 if (trail.go != null) trail.go.transform.position = pos;
+                if (shimFx.go != null) shimFx.go.transform.position = pos;
                 yield return null;
             }
 
-            if (trail.go != null) Destroy(trail.go, 0.4f);
+            if (trail.go != null) Destroy(trail.go, 0.5f);
+            if (shimFx.go != null) Destroy(shimFx.go, 0.6f);
             Destroy(orb);
 
-            // Stage 2: explosion ring at target — donut-ish radial burst.
+            // Stage 2a: bright core flash burst at impact (large hot sparks).
             var burst = BuildFx("FireballBurst", target, target + Vector3.up, hot);
             {
                 var main = burst.ps.main;
                 main.playOnAwake = false;
                 main.duration = 0.30f; main.loop = false;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(2.5f, 5.0f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.08f, 0.18f);
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.65f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(2.5f, 6.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.10f, 0.22f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(hot, core);
-                main.maxParticles  = 140;
+                main.maxParticles  = 220;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 burst.psr.renderMode = ParticleSystemRenderMode.Billboard;
                 var emission = burst.ps.emission;
-                emission.enabled = true;
-                emission.rateOverTime = 0;
-                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 100) });
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 160) });
                 var shape = burst.ps.shape;
-                shape.enabled = true;
-                shape.shapeType = ParticleSystemShapeType.Sphere;
-                shape.radius = 0.05f;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.05f;
+                var col2 = burst.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(core, 0f), new GradientColorKey(hot, 0.4f), new GradientColorKey(deep, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.85f, 0.7f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
                 burst.ps.Play();
-                Destroy(burst.go, 1.2f);
+                Destroy(burst.go, 1.4f);
             }
 
-            // Hit reaction — dummy stays standing.
-            yield return PunchScale(_dummy, 0.20f, 0.18f);
+            // Stage 2b: expanding shockwave RING (donut shape, fast outward).
+            var ring = BuildFx("FireballRing", target, target + Vector3.up, hot);
+            {
+                ring.go.transform.rotation = Quaternion.LookRotation(Vector3.up, Vector3.forward);
+                var main = ring.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.25f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.55f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(4.0f, 6.5f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.10f, 0.20f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(core, hot);
+                main.maxParticles  = 90;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                ring.psr.renderMode = ParticleSystemRenderMode.Stretch;
+                ring.psr.lengthScale = 2.5f; ring.psr.velocityScale = 0.4f;
+                var emission = ring.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 70) });
+                var shape = ring.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Donut;
+                shape.radius = 0.12f; shape.donutRadius = 0.02f;
+                var col2 = ring.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(core, 0f), new GradientColorKey(deep, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                ring.ps.Play();
+                Destroy(ring.go, 1.2f);
+            }
+
+            // Hit reaction — dummy stays standing (fire feel = bigger punch).
+            if (_dummy != null) _dummy.GetComponent<DummyHitFeedback>()?.OnHit(new Color(1.0f, 0.55f, 0.15f), 12f);
+            yield return PunchScale(_dummy, 0.24f, 0.18f);
+
+            // Stage 3: lingering smoke puff that drifts upward & fades.
+            var smokeFx = BuildFx("FireballSmoke", target, target + Vector3.up, smoke);
+            {
+                var main = smokeFx.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.6f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.9f, 1.6f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.6f, 1.4f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.18f, 0.34f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(smoke);
+                main.maxParticles  = 70;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = -0.30f; // smoke rises
+                smokeFx.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = smokeFx.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 35), new ParticleSystem.Burst(0.15f, 20) });
+                var shape = smokeFx.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.10f;
+                var col2 = smokeFx.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(smoke, 0f), new GradientColorKey(smoke, 1f) },
+                    new[] { new GradientAlphaKey(0.0f, 0f), new GradientAlphaKey(0.85f, 0.25f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                var sizeOL = smokeFx.ps.sizeOverLifetime; sizeOL.enabled = true;
+                sizeOL.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 0.6f, 1f, 1.8f));
+                smokeFx.ps.Play();
+                Destroy(smokeFx.go, 2.4f);
+            }
         }
 
         // WATER GUN — wide cone-shaped continuous spray, longer particle
@@ -1136,66 +1378,138 @@ namespace Tigerverse.UI
 
             Color cold = new Color(0.30f, 0.65f, 1.00f);
             Color foam = new Color(0.85f, 0.95f, 1.00f);
+            Color deepBlue = new Color(0.10f, 0.40f, 0.80f);
 
-            // Continuous spray cone (wide, slower particles, long lifetime).
+            // Layer A: stretched droplet stream (long thin droplets — the
+            // "core" of the hose).
             var spray = BuildFx("WaterSpray", origin, target, cold);
             {
                 var main = spray.ps.main;
                 main.playOnAwake = false;
-                main.duration = 0.55f; main.loop = false;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.55f, 0.85f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(3.5f, 5.5f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.12f);
+                main.duration = 0.65f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.55f, 0.95f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(4.0f, 6.5f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(cold, foam);
-                main.maxParticles  = 220;
+                main.maxParticles  = 320;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
-                main.gravityModifier = 0.4f;
+                main.gravityModifier = 0.45f;
                 spray.psr.renderMode = ParticleSystemRenderMode.Stretch;
-                spray.psr.lengthScale = 2.5f;
-                spray.psr.velocityScale = 0.25f;
+                spray.psr.lengthScale = 3.5f;
+                spray.psr.velocityScale = 0.35f;
                 var emission = spray.ps.emission;
                 emission.enabled = true;
-                emission.rateOverTime = 220f;
+                emission.rateOverTime = 320f;
                 var shape = spray.ps.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Cone;
-                shape.angle  = 18f;   // wide cone
+                shape.angle  = 14f;
                 shape.radius = 0.05f;
+                var col2 = spray.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(foam, 0f), new GradientColorKey(cold, 0.5f), new GradientColorKey(deepBlue, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.85f, 0.6f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
                 spray.ps.Play();
-                Destroy(spray.go, 1.6f);
+                Destroy(spray.go, 1.8f);
+            }
+
+            // Layer B: round droplets (sphere billboard). Adds volume to the
+            // stream so it doesn't look like only thin shards.
+            var droplets = BuildFx("WaterDroplets", origin, target, foam);
+            {
+                var main = droplets.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.65f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.85f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(3.0f, 5.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.11f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(foam, cold);
+                main.maxParticles  = 220;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = 0.55f;
+                droplets.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = droplets.ps.emission;
+                emission.enabled = true;
+                emission.rateOverTime = 220f;
+                var shape = droplets.ps.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.07f;
+                // Push droplets along the cast direction so they flow toward the dummy.
+                var vol = droplets.ps.velocityOverLifetime;
+                vol.enabled = true; vol.space = ParticleSystemSimulationSpace.Local;
+                vol.z = new ParticleSystem.MinMaxCurve(3.5f, 5.0f);
+                var sizeOL = droplets.ps.sizeOverLifetime; sizeOL.enabled = true;
+                sizeOL.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 1f, 1f, 0.4f));
+                droplets.ps.Play();
+                Destroy(droplets.go, 1.8f);
             }
 
             // Wait for the spray to actually reach the dummy before the hit.
             yield return new WaitForSeconds(0.35f);
 
-            // Splash burst: outward ring at the dummy.
+            // Splash burst: big radial fan at the dummy + ground droplets.
             var splash = BuildFx("WaterSplash", target, target + Vector3.up, foam);
             {
                 var main = splash.ps.main;
                 main.playOnAwake = false;
                 main.duration = 0.30f; main.loop = false;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(2.5f, 4.0f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.12f);
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.40f, 0.70f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(3.5f, 5.5f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.07f, 0.14f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(foam, cold);
-                main.maxParticles  = 120;
+                main.maxParticles  = 200;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
-                main.gravityModifier = 0.6f;
-                splash.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                main.gravityModifier = 0.7f;
+                splash.psr.renderMode = ParticleSystemRenderMode.Stretch;
+                splash.psr.lengthScale = 2.0f; splash.psr.velocityScale = 0.4f;
                 var emission = splash.ps.emission;
-                emission.enabled = true;
-                emission.rateOverTime = 0;
-                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 90) });
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] {
+                    new ParticleSystem.Burst(0f, 110),
+                    new ParticleSystem.Burst(0.05f, 50),
+                });
                 var shape = splash.ps.shape;
                 shape.enabled = true;
-                shape.shapeType = ParticleSystemShapeType.Donut;
-                shape.radius = 0.18f;
-                shape.donutRadius = 0.04f;
+                shape.shapeType = ParticleSystemShapeType.Hemisphere;
+                shape.radius = 0.12f;
                 splash.ps.Play();
-                Destroy(splash.go, 1.4f);
+                Destroy(splash.go, 1.6f);
             }
 
-            yield return PunchScale(_dummy, 0.16f, 0.16f);
+            // Splash mist — soft round droplets that linger and fall.
+            var mist = BuildFx("WaterMist", target, target + Vector3.up, foam);
+            {
+                var main = mist.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.40f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.1f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.6f, 1.6f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.10f, 0.22f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(new Color(foam.r, foam.g, foam.b, 0.55f));
+                main.maxParticles  = 90;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = 0.35f;
+                mist.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = mist.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+                var shape = mist.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.18f;
+                var col2 = mist.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(foam, 0f), new GradientColorKey(cold, 1f) },
+                    new[] { new GradientAlphaKey(0.7f, 0f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                mist.ps.Play();
+                Destroy(mist.go, 1.8f);
+            }
+
+            if (_dummy != null) _dummy.GetComponent<DummyHitFeedback>()?.OnHit(new Color(0.30f, 0.65f, 1.00f), 12f);
+            yield return PunchScale(_dummy, 0.18f, 0.16f);
         }
 
         // ICE SHARD — angular stretched-particle "shards" flying scribble
@@ -1222,6 +1536,7 @@ namespace Tigerverse.UI
 
             Color icePale = new Color(0.80f, 0.95f, 1.00f);
             Color iceDeep = new Color(0.45f, 0.75f, 0.95f);
+            Color frost   = new Color(0.92f, 0.98f, 1.00f, 0.7f);
 
             // Travel: a few angular stretched shards thrown in a tight cone.
             var shards = BuildFx("IceShards", origin, target, icePale);
@@ -1230,19 +1545,19 @@ namespace Tigerverse.UI
                 main.playOnAwake = false;
                 main.duration = 0.20f; main.loop = false;
                 main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(7.5f, 10f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.08f, 0.16f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(8.5f, 11f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.10f, 0.20f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(icePale, iceDeep);
                 main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-                main.maxParticles  = 30;
+                main.maxParticles  = 50;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 shards.psr.renderMode  = ParticleSystemRenderMode.Stretch;
-                shards.psr.lengthScale = 5f;
-                shards.psr.velocityScale = 0.4f;
+                shards.psr.lengthScale = 6f;
+                shards.psr.velocityScale = 0.5f;
                 var emission = shards.ps.emission;
                 emission.enabled = true;
                 emission.rateOverTime = 0;
-                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 12) });
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 22) });
                 var shape = shards.ps.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Cone;
@@ -1252,39 +1567,138 @@ namespace Tigerverse.UI
                 Destroy(shards.go, 1.0f);
             }
 
-            yield return new WaitForSeconds(0.18f);
+            // Frost trail — fine pale snow drifting along the shard path.
+            var frostFx = BuildFx("IceFrostTrail", origin, target, frost);
+            {
+                var main = frostFx.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.30f; main.loop = true;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.1f, 0.6f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.10f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(frost);
+                main.maxParticles  = 120;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.gravityModifier = 0.05f;
+                frostFx.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = frostFx.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 200f;
+                var shape = frostFx.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.06f;
+                var col2 = frostFx.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(icePale, 1f) },
+                    new[] { new GradientAlphaKey(0.8f, 0f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                frostFx.ps.Play();
+            }
 
-            // Impact: jagged shatter — short-life cubic particles spraying
-            // outward in all directions.
+            // Animate the frost-trail anchor along the shard path.
+            float tFrost = 0f, dFrost = 0.18f;
+            while (tFrost < dFrost && frostFx.go != null)
+            {
+                tFrost += Time.deltaTime;
+                float k = Mathf.Clamp01(tFrost / dFrost);
+                frostFx.go.transform.position = Vector3.Lerp(origin, target, k);
+                yield return null;
+            }
+            if (frostFx.go != null) Destroy(frostFx.go, 0.6f);
+
+            // Impact: crystallize burst — bright pale flash that grows.
+            var crystallize = BuildFx("IceCrystallize", target, target + Vector3.up, icePale);
+            {
+                var main = crystallize.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.20f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.30f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.4f, 1.2f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.10f, 0.18f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(Color.white, icePale);
+                main.maxParticles  = 60;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                crystallize.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = crystallize.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 45) });
+                var shape = crystallize.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.02f;
+                var sizeOL = crystallize.ps.sizeOverLifetime; sizeOL.enabled = true;
+                sizeOL.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 0.4f, 1f, 1.6f));
+                var col2 = crystallize.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(icePale, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                crystallize.ps.Play();
+                Destroy(crystallize.go, 1.0f);
+            }
+
+            // Impact: jagged shatter — radial stretched ice fragments.
             var shatter = BuildFx("IceShatter", target, target + Vector3.up, icePale);
             {
                 var main = shatter.ps.main;
                 main.playOnAwake = false;
                 main.duration = 0.20f; main.loop = false;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(3.5f, 6.0f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.10f);
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.45f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(4.5f, 7.0f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.12f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(icePale, iceDeep);
                 main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-                main.maxParticles  = 80;
-                main.gravityModifier = 0.8f;
+                main.maxParticles  = 140;
+                main.gravityModifier = 0.9f;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 shatter.psr.renderMode  = ParticleSystemRenderMode.Stretch;
-                shatter.psr.lengthScale = 1.5f;
-                shatter.psr.velocityScale = 0.6f;
+                shatter.psr.lengthScale = 1.8f;
+                shatter.psr.velocityScale = 0.7f;
                 var emission = shatter.ps.emission;
                 emission.enabled = true;
                 emission.rateOverTime = 0;
-                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 100) });
                 var shape = shatter.ps.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Sphere;
                 shape.radius = 0.02f;
                 shatter.ps.Play();
-                Destroy(shatter.go, 1.2f);
+                Destroy(shatter.go, 1.4f);
             }
 
-            yield return PunchScale(_dummy, 0.18f, 0.16f);
+            // Falling ice fragment debris — small chunks that fall and fade.
+            var debris = BuildFx("IceDebris", target, target + Vector3.up, iceDeep);
+            {
+                var main = debris.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.30f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.8f, 1.4f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(1.2f, 2.6f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.10f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(icePale, iceDeep);
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                main.maxParticles  = 60;
+                main.gravityModifier = 1.6f;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                debris.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = debris.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 30), new ParticleSystem.Burst(0.08f, 20) });
+                var shape = debris.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Hemisphere; shape.radius = 0.10f;
+                var rotOL = debris.ps.rotationOverLifetime;
+                rotOL.enabled = true;
+                rotOL.z = new ParticleSystem.MinMaxCurve(-3f, 3f);
+                var col2 = debris.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(icePale, 0f), new GradientColorKey(iceDeep, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.9f, 0.7f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                debris.ps.Play();
+                Destroy(debris.go, 2.0f);
+            }
+
+            if (_dummy != null) _dummy.GetComponent<DummyHitFeedback>()?.OnHit(new Color(0.55f, 0.80f, 1.00f), 12f);
+            yield return PunchScale(_dummy, 0.20f, 0.16f);
         }
 
         // LEAF BLADE — fast green slash: one quick stretched-particle line
@@ -1298,6 +1712,7 @@ namespace Tigerverse.UI
 
             Color leafBright = new Color(0.55f, 0.95f, 0.40f);
             Color leafDeep   = new Color(0.20f, 0.55f, 0.20f);
+            Color afterImg   = new Color(0.70f, 1.00f, 0.55f, 0.55f);
 
             // Slash streak — single fast stretched line aimed at the dummy.
             var slash = BuildFx("LeafSlash", origin, target, leafBright);
@@ -1305,29 +1720,62 @@ namespace Tigerverse.UI
                 var main = slash.ps.main;
                 main.playOnAwake = false;
                 main.duration = 0.10f; main.loop = false;
-                main.startLifetime = new ParticleSystem.MinMaxCurve(0.10f, 0.18f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(14f, 18f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.12f);
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.10f, 0.20f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(15f, 20f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.07f, 0.14f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(leafBright, leafDeep);
-                main.maxParticles  = 30;
+                main.maxParticles  = 60;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 slash.psr.renderMode  = ParticleSystemRenderMode.Stretch;
-                slash.psr.lengthScale = 9f;     // long line
-                slash.psr.velocityScale = 0.6f;
+                slash.psr.lengthScale = 12f;
+                slash.psr.velocityScale = 0.7f;
                 var emission = slash.ps.emission;
                 emission.enabled = true;
                 emission.rateOverTime = 0;
-                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 18) });
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 30) });
                 var shape = slash.ps.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Cone;
-                shape.angle  = 1.5f;   // razor-thin line, almost a beam
+                shape.angle  = 1.5f;
                 shape.radius = 0.02f;
                 slash.ps.Play();
-                Destroy(slash.go, 0.8f);
+                Destroy(slash.go, 0.9f);
             }
 
-            yield return new WaitForSeconds(0.12f);
+            // Arc afterimage — slightly offset secondary slash giving the
+            // impression of a curved blade swing.
+            var arcDir = (target - origin);
+            Vector3 arcUp = Vector3.up * 0.18f;
+            var arc = BuildFx("LeafArc", origin + arcUp, target + arcUp, afterImg);
+            {
+                var main = arc.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.10f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.30f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(12f, 16f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.10f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(afterImg);
+                main.maxParticles  = 40;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                arc.psr.renderMode = ParticleSystemRenderMode.Stretch;
+                arc.psr.lengthScale = 10f; arc.psr.velocityScale = 0.6f;
+                var emission = arc.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 22) });
+                var shape = arc.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle = 2.5f; shape.radius = 0.03f;
+                var col2 = arc.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(afterImg, 0f), new GradientColorKey(leafDeep, 1f) },
+                    new[] { new GradientAlphaKey(0.7f, 0f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                arc.ps.Play();
+                Destroy(arc.go, 0.9f);
+            }
+
+            yield return new WaitForSeconds(0.10f);
 
             // Impact: green sparkle puff (small omnidirectional billboard).
             var puff = BuildFx("LeafPuff", target, target + Vector3.up, leafBright);
@@ -1336,27 +1784,72 @@ namespace Tigerverse.UI
                 main.playOnAwake = false;
                 main.duration = 0.20f; main.loop = false;
                 main.startLifetime = new ParticleSystem.MinMaxCurve(0.30f, 0.55f);
-                main.startSpeed    = new ParticleSystem.MinMaxCurve(1.5f, 3.5f);
-                main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.10f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(2.0f, 4.5f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.05f, 0.12f);
                 main.startColor    = new ParticleSystem.MinMaxGradient(leafBright, leafDeep);
                 main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-                main.maxParticles  = 80;
+                main.maxParticles  = 120;
                 main.gravityModifier = 0.2f;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 puff.psr.renderMode = ParticleSystemRenderMode.Billboard;
                 var emission = puff.ps.emission;
                 emission.enabled = true;
                 emission.rateOverTime = 0;
-                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 50) });
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 80) });
                 var shape = puff.ps.shape;
                 shape.enabled = true;
                 shape.shapeType = ParticleSystemShapeType.Sphere;
                 shape.radius = 0.05f;
                 puff.ps.Play();
-                Destroy(puff.go, 1.2f);
+                Destroy(puff.go, 1.4f);
             }
 
-            yield return PunchScale(_dummy, 0.16f, 0.14f);
+            // Raining leaf petals — billboard particles spawning around the
+            // dummy and drifting down with rotation, like falling leaves.
+            var petals = BuildFx("LeafPetals", target + Vector3.up * 0.6f, target + Vector3.up, leafBright);
+            {
+                var main = petals.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.5f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(1.2f, 2.0f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(0.2f, 0.8f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(leafBright, leafDeep);
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                main.maxParticles  = 70;
+                main.gravityModifier = 0.35f; // gentle fall
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                petals.psr.renderMode = ParticleSystemRenderMode.Billboard;
+                var emission = petals.ps.emission;
+                emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] {
+                    new ParticleSystem.Burst(0f, 25),
+                    new ParticleSystem.Burst(0.15f, 20),
+                    new ParticleSystem.Burst(0.30f, 15),
+                });
+                var shape = petals.ps.shape;
+                shape.enabled = true; shape.shapeType = ParticleSystemShapeType.Hemisphere;
+                shape.radius = 0.30f;
+                // Wobble sideways using velocity over lifetime so they fall like leaves.
+                var vol = petals.ps.velocityOverLifetime;
+                vol.enabled = true; vol.space = ParticleSystemSimulationSpace.World;
+                vol.x = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+                vol.z = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+                var rotOL = petals.ps.rotationOverLifetime;
+                rotOL.enabled = true;
+                rotOL.z = new ParticleSystem.MinMaxCurve(-2.5f, 2.5f);
+                var col2 = petals.ps.colorOverLifetime; col2.enabled = true;
+                var grad = new Gradient();
+                grad.SetKeys(
+                    new[] { new GradientColorKey(leafBright, 0f), new GradientColorKey(leafDeep, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.9f, 0.7f), new GradientAlphaKey(0f, 1f) });
+                col2.color = new ParticleSystem.MinMaxGradient(grad);
+                petals.ps.Play();
+                Destroy(petals.go, 2.6f);
+            }
+
+            if (_dummy != null) _dummy.GetComponent<DummyHitFeedback>()?.OnHit(new Color(0.55f, 0.95f, 0.40f), 12f);
+            yield return PunchScale(_dummy, 0.18f, 0.14f);
         }
 
         private void SpawnLightningEffect()
@@ -1376,25 +1869,29 @@ namespace Tigerverse.UI
             else mat.color = new Color(1f, 0.95f, 0.4f);
             psr.sharedMaterial = mat;
             psr.renderMode = ParticleSystemRenderMode.Stretch;
-            psr.lengthScale = 4f;
-            psr.velocityScale = 0.3f;
+            psr.lengthScale = 6f;          // longer streaks for thicker bolt
+            psr.velocityScale = 0.4f;
 
             var main = ps.main;
             main.playOnAwake = false;
             main.duration = 0.25f;
             main.loop = false;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.35f);
-            main.startSpeed    = new ParticleSystem.MinMaxCurve(6f, 10f);
-            main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.10f);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.40f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(8f, 14f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
             main.startColor    = new ParticleSystem.MinMaxGradient(
                 new Color(1f, 0.95f, 0.4f), new Color(1f, 1f, 1f));
-            main.maxParticles = 80;
+            main.maxParticles = 180;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
 
             var emission = ps.emission;
             emission.enabled = true;
             emission.rateOverTime = 0;
-            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 60) });
+            // Two pulses so the bolt feels like it strikes twice in quick succession.
+            emission.SetBursts(new[] {
+                new ParticleSystem.Burst(0f, 120),
+                new ParticleSystem.Burst(0.06f, 70),
+            });
 
             // Aim particles toward the dummy.
             var shape = ps.shape;
@@ -1406,8 +1903,154 @@ namespace Tigerverse.UI
             go.transform.rotation = Quaternion.LookRotation(toDummy.normalized, Vector3.up);
             // Cone in PS is along +Z by default if shape doesn't override, which works here.
 
+            // Add a color-over-lifetime so the streaks fade from white-hot to
+            // electric-yellow as they age.
+            var col = ps.colorOverLifetime; col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(new Color(1f, 0.95f, 0.4f), 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+            col.color = new ParticleSystem.MinMaxGradient(grad);
+
             ps.Play();
             Destroy(go, 1.5f);
+        }
+
+        // Bright omnidirectional pre-flash spawned right at the cast origin.
+        // Bigger billboard, very short life — sells the "strike" moment.
+        private void SpawnLightningPreFlash()
+        {
+            if (_borrowedScribble == null || _dummy == null) return;
+            Vector3 origin = _borrowedScribble.transform.position + Vector3.up * 0.4f;
+
+            var fx = BuildFx("LightningFlash", origin, _dummy.transform.position, new Color(1f, 0.98f, 0.7f));
+            var main = fx.ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.10f; main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.10f, 0.16f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(0.0f, 0.4f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.6f, 1.1f);
+            main.startColor    = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 0.85f));
+            main.maxParticles  = 12;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            fx.psr.renderMode = ParticleSystemRenderMode.Billboard;
+            var emission = fx.ps.emission; emission.enabled = true; emission.rateOverTime = 0;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 6) });
+            var shape = fx.ps.shape; shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 0.02f;
+            var sizeOL = fx.ps.sizeOverLifetime; sizeOL.enabled = true;
+            sizeOL.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 1.3f, 1f, 0f));
+            var col = fx.ps.colorOverLifetime; col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(new Color(1f, 0.95f, 0.4f), 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+            col.color = new ParticleSystem.MinMaxGradient(grad);
+            fx.ps.Play();
+            Destroy(fx.go, 0.6f);
+
+            // Mirror flash at the dummy too so the impact reads as illuminated.
+            Vector3 hit = _dummy.transform.position + Vector3.up * 0.4f;
+            var fx2 = BuildFx("LightningFlashHit", hit, hit + Vector3.up, new Color(1f, 0.98f, 0.7f));
+            var m2 = fx2.ps.main;
+            m2.playOnAwake = false; m2.duration = 0.10f; m2.loop = false;
+            m2.startLifetime = new ParticleSystem.MinMaxCurve(0.12f, 0.20f);
+            m2.startSpeed = new ParticleSystem.MinMaxCurve(0f, 0.2f);
+            m2.startSize  = new ParticleSystem.MinMaxCurve(0.7f, 1.3f);
+            m2.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 0.85f));
+            m2.maxParticles = 12;
+            m2.simulationSpace = ParticleSystemSimulationSpace.World;
+            fx2.psr.renderMode = ParticleSystemRenderMode.Billboard;
+            var em2 = fx2.ps.emission; em2.enabled = true; em2.rateOverTime = 0;
+            em2.SetBursts(new[] { new ParticleSystem.Burst(0.04f, 6) });
+            var sh2 = fx2.ps.shape; sh2.enabled = true; sh2.shapeType = ParticleSystemShapeType.Sphere; sh2.radius = 0.02f;
+            var sz2 = fx2.ps.sizeOverLifetime; sz2.enabled = true;
+            sz2.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.EaseInOut(0f, 1.4f, 1f, 0f));
+            var c2 = fx2.ps.colorOverLifetime; c2.enabled = true;
+            c2.color = new ParticleSystem.MinMaxGradient(grad);
+            fx2.ps.Play();
+            Destroy(fx2.go, 0.7f);
+        }
+
+        // Several short branching forks shot off the main bolt — each fork
+        // is a tiny stretched-particle cone aimed in a randomized direction
+        // around the scribble->dummy axis.
+        private void SpawnLightningForks()
+        {
+            if (_borrowedScribble == null || _dummy == null) return;
+            Vector3 origin = _borrowedScribble.transform.position + Vector3.up * 0.4f;
+            Vector3 target = _dummy.transform.position + Vector3.up * 0.4f;
+            Vector3 axis = (target - origin).normalized;
+
+            for (int i = 0; i < 4; i++)
+            {
+                // Random offset perpendicular to the bolt axis.
+                Vector3 perp = Vector3.Cross(axis, UnityEngine.Random.onUnitSphere).normalized;
+                Vector3 forkOrigin = Vector3.Lerp(origin, target, UnityEngine.Random.Range(0.25f, 0.75f))
+                                     + perp * UnityEngine.Random.Range(0.04f, 0.10f);
+                Vector3 forkTarget = forkOrigin + (axis + perp * UnityEngine.Random.Range(0.5f, 1.2f)) * 0.5f;
+
+                var fork = BuildFx($"LightningFork_{i}", forkOrigin, forkTarget, new Color(1f, 0.98f, 0.7f));
+                var main = fork.ps.main;
+                main.playOnAwake = false;
+                main.duration = 0.10f; main.loop = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(0.10f, 0.20f);
+                main.startSpeed    = new ParticleSystem.MinMaxCurve(5f, 9f);
+                main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.09f);
+                main.startColor    = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 0.85f), new Color(1f, 0.95f, 0.4f));
+                main.maxParticles  = 30;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                fork.psr.renderMode = ParticleSystemRenderMode.Stretch;
+                fork.psr.lengthScale = 5f; fork.psr.velocityScale = 0.4f;
+                var emission = fork.ps.emission; emission.enabled = true; emission.rateOverTime = 0;
+                emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 18) });
+                var shape = fork.ps.shape; shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle = 5f; shape.radius = 0.02f;
+                fork.ps.Play();
+                Destroy(fork.go, 0.6f);
+            }
+        }
+
+        // Sparks at the dummy's feet on impact — fast yellow stretched
+        // particles spraying outward along the ground.
+        private void SpawnGroundSparks()
+        {
+            if (_dummy == null) return;
+            Vector3 ground = _dummy.transform.position + Vector3.up * 0.05f;
+
+            var spark = BuildFx("LightningGroundSparks", ground, ground + Vector3.up, new Color(1f, 0.95f, 0.4f));
+            // Aim the cone upward-outward — rotate so +Z points up (radial fan along ground).
+            spark.go.transform.rotation = Quaternion.LookRotation(Vector3.up, Vector3.forward);
+            var main = spark.ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.20f; main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.20f, 0.45f);
+            main.startSpeed    = new ParticleSystem.MinMaxCurve(3.0f, 5.5f);
+            main.startSize     = new ParticleSystem.MinMaxCurve(0.04f, 0.10f);
+            main.startColor    = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 0.7f), new Color(1f, 0.85f, 0.3f));
+            main.maxParticles  = 90;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.gravityModifier = 0.6f;
+            spark.psr.renderMode = ParticleSystemRenderMode.Stretch;
+            spark.psr.lengthScale = 3f; spark.psr.velocityScale = 0.5f;
+            var emission = spark.ps.emission; emission.enabled = true; emission.rateOverTime = 0;
+            emission.SetBursts(new[] {
+                new ParticleSystem.Burst(0f, 50),
+                new ParticleSystem.Burst(0.06f, 30),
+            });
+            var shape = spark.ps.shape; shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 75f; // very wide cone — almost a dome along the ground
+            shape.radius = 0.05f;
+            var col = spark.ps.colorOverLifetime; col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(new Color(1f, 0.7f, 0.2f), 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+            col.color = new ParticleSystem.MinMaxGradient(grad);
+            spark.ps.Play();
+            Destroy(spark.go, 1.2f);
         }
 
         private void FadeAndDestroy(GameObject go, float duration)
@@ -1587,8 +2230,11 @@ namespace Tigerverse.UI
             {
                 req.uploadHandler   = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body));
                 var dh = new DownloadHandlerAudioClip(url, AudioType.MPEG);
+                // Unity 6 emits "Audio compression is not valid as
+                // streamAudio is set to true" if both flags are on. Pick
+                // streaming (we want the clip ready ASAP) and leave the
+                // compressed-storage flag off.
                 dh.streamAudio = true;
-                dh.compressed  = true;
                 req.downloadHandler = dh;
                 req.SetRequestHeader("xi-api-key", config.elevenLabsApiKey);
                 req.SetRequestHeader("Content-Type", "application/json");
@@ -1644,8 +2290,11 @@ namespace Tigerverse.UI
                 // every line. Quest is sensitive to this and the user was
                 // seeing the whole game freeze per Professor line.
                 var dh = new DownloadHandlerAudioClip(url, AudioType.MPEG);
+                // Unity 6 emits "Audio compression is not valid as
+                // streamAudio is set to true" if both flags are on. Pick
+                // streaming (we want the clip ready ASAP) and leave the
+                // compressed-storage flag off.
                 dh.streamAudio = true;
-                dh.compressed  = true;
                 req.downloadHandler = dh;
                 req.SetRequestHeader("xi-api-key", config.elevenLabsApiKey);
                 req.SetRequestHeader("Content-Type", "application/json");

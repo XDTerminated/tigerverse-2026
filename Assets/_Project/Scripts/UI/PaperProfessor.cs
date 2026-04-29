@@ -57,6 +57,8 @@ namespace Tigerverse.UI
         private float     _baseLocalYaw;
 
         private static readonly int SpeakHash = Animator.StringToHash("Speak");
+        private static readonly int CastHash  = Animator.StringToHash("Cast");
+        private static readonly int HitHash   = Animator.StringToHash("Hit");
 
         private void Awake()
         {
@@ -157,16 +159,12 @@ namespace Tigerverse.UI
                 _currentYaw = _baseLocalYaw;
             }
 
-            // Idle sway (whole body) — Z-axis tilt layered on top of the
-            // look-at yaw so the Professor still has a gentle character.
-            float sway = Mathf.Sin(_phase * idleSwayHz * Mathf.PI * 2f) * idleSwayDeg;
-            transform.localRotation = Quaternion.Euler(0, _currentYaw, sway);
-
-            // Idle bob — applied to the model so it stays pinned at the
-            // pivot when scaled by the spawn animation.
-            Vector3 hp = _baseModelLocalPos;
-            hp.y += Mathf.Sin(_phase * idleBobHz * Mathf.PI * 2f) * idleBobAmplitude;
-            _model.localPosition = hp;
+            // The Adventurer FBX has its own Idle animation playing via
+            // the Animator, so we no longer layer procedural bob / sway —
+            // doing both fights the bone animation and looks twitchy. The
+            // only thing this Update still drives is the look-at-player
+            // yaw above.
+            transform.localRotation = Quaternion.Euler(0, _currentYaw, 0);
         }
 
         /// <summary>
@@ -187,6 +185,26 @@ namespace Tigerverse.UI
         {
             _clapStartT = Time.time;
             ClapSfx.Play(transform.position + Vector3.up * 1.4f);
+        }
+
+        /// <summary>
+        /// Fire the Adventurer's Cast (Sword_Slash) animation when the
+        /// Professor demos a spell. No-op if the controller lacks the
+        /// trigger (so older controllers still compile).
+        /// </summary>
+        public void Cast() => TryFireTrigger(CastHash);
+
+        /// <summary>
+        /// Play the HitRecieve animation, e.g. when the player's spell
+        /// "lands" on the Professor.
+        /// </summary>
+        public void PlayHit() => TryFireTrigger(HitHash);
+
+        private void TryFireTrigger(int hash)
+        {
+            if (_animator == null || _animator.runtimeAnimatorController == null) return;
+            foreach (var p in _animator.parameters)
+                if (p.nameHash == hash) { _animator.SetTrigger(hash); return; }
         }
 
         // Override the cached arm bones AFTER the Animator has run for the

@@ -40,9 +40,33 @@ namespace Tigerverse.Net
         // Static round-robin so successive remote players get different
         // models without explicit configuration.
         private static int _variantCounter;
+        private bool _built;
 
-        private void Awake()
+        // Build deferred from Awake to Start so callers (PlayerAvatar)
+        // have a window to call SetVariant() right after AddComponent.
+        private void Start()
         {
+            if (!_built) BuildBody();
+        }
+
+        /// <summary>
+        /// Force this avatar to use a specific Resources/Characters prefab
+        /// (e.g. "Casual" or "MaleCasual"). Call right after AddComponent
+        /// and before the first frame so it lands ahead of Start().
+        /// </summary>
+        public void SetVariant(string prefabName)
+        {
+            variantPrefab = prefabName ?? "";
+            if (_built)
+            {
+                // Already built (script ran Start before SetVariant).
+                // Tear down the previous model and rebuild with the new
+                // prefab so the variant change is visible.
+                if (_model != null) Destroy(_model.gameObject);
+                _built = false;
+            }
+            // Build immediately so callers can rely on the new model
+            // existing without waiting for Start.
             BuildBody();
         }
 
@@ -73,6 +97,7 @@ namespace Tigerverse.Net
             inst.transform.localRotation = Quaternion.identity;
             _model = inst.transform;
             BodyRenderers = GetComponentsInChildren<Renderer>(includeInactive: true);
+            _built = true;
         }
 
         private void EnsureNameLabel()
