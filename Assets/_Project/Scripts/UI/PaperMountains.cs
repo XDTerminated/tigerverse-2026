@@ -94,6 +94,10 @@ namespace Tigerverse.UI
             mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
             mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
             mat.SetInt("_ZWrite", 0);
+            // Double-sided so silhouettes are visible regardless of which
+            // way the billboard rotates them.
+            if (mat.HasProperty("_Cull")) mat.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            mat.SetInt("_BUILTIN_QuadCull", 0);
             mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
             mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             return mat;
@@ -164,17 +168,27 @@ namespace Tigerverse.UI
             return tex;
         }
 
+        [ExecuteAlways]
         private class MountainBillboard : MonoBehaviour
         {
             public Vector3 center;
             private void LateUpdate()
             {
                 Camera cam = Camera.main;
+#if UNITY_EDITOR
+                if (cam == null && !Application.isPlaying)
+                {
+                    var sv = UnityEditor.SceneView.lastActiveSceneView;
+                    if (sv != null) cam = sv.camera;
+                }
+#endif
                 if (cam == null) return;
                 Vector3 to = cam.transform.position - transform.position;
                 to.y = 0f;
                 if (to.sqrMagnitude < 1e-6f) return;
-                // Quad faces +Z; aim that face toward the camera around Y only.
+                // Unity Quad's visible face is along its local -Z. To make
+                // the visible face land toward the camera we point +Z
+                // AWAY from the camera, i.e. forward = -to.
                 transform.rotation = Quaternion.LookRotation(-to.normalized, Vector3.up);
             }
         }
