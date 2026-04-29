@@ -1,28 +1,21 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Tigerverse.UI
 {
     /// <summary>
-    /// Big floating "X WINS!" banner shown when the battle ends. Spawns ~3 m
-    /// in front of the local camera, billboards each LateUpdate so the
-    /// player can turn freely. Pop-in scale animation, optional voice
-    /// announcement via the scene's Announcer (TTS), idle pulse for drama.
-    /// Lives until Hide() / OnDestroy.
+    /// "X WINS!" panel shown when the battle ends. Built as a 2D world-space
+    /// canvas styled the same way as the main-menu loading screen: rounded
+    /// panel sprite, Sophiecomic font, paper-cream tint. Soft-follows the
+    /// player via CanvasFollowPlayer so it stays in view if they turn.
+    /// Optional ElevenLabs TTS announcement.
     /// </summary>
     [DisallowMultipleComponent]
     public class WinScreenBanner : MonoBehaviour
     {
-        [SerializeField] private float distanceFromPlayer = 3.2f;
-        [SerializeField] private float anchorHeight        = 1.55f;
-
-        private TextMeshPro _winnerLabel;
-        private TextMeshPro _flavorLabel;
-        private GameObject  _backing;
-        private Camera      _cam;
-        private float       _phase;
-
+        private static Sprite _cachedPanelSprite;
         private static TMP_FontAsset _cachedFont;
 
         public static WinScreenBanner Spawn(string winnerName)
@@ -35,102 +28,119 @@ namespace Tigerverse.UI
 
         public void SetWinner(string winnerName)
         {
-            string nameUpper = string.IsNullOrEmpty(winnerName) ? "PLAYER" : winnerName.ToUpperInvariant();
-            BuildVisualIfNeeded();
-            if (_winnerLabel != null) _winnerLabel.text = nameUpper + " WINS!";
-            if (_flavorLabel != null) _flavorLabel.text = "Returning to title…";
+            BuildCanvas(winnerName);
             StartCoroutine(SpeakAnnouncement(winnerName));
         }
 
-        private void BuildVisualIfNeeded()
+        private void BuildCanvas(string winnerName)
         {
-            if (_backing != null) return;
+            string nameUpper = string.IsNullOrEmpty(winnerName) ? "PLAYER" : winnerName.ToUpperInvariant();
 
-            // Anchor in front of the local camera at chest/eye height. World
-            // position is computed once on spawn and then we billboard the
-            // rotation per frame so the player can turn freely.
-            var cam = Camera.main;
-            if (cam != null)
+            // World-space canvas styled to match TitleCanvas — same scale
+            // (0.002), same size envelope, same XR raycaster setup so future
+            // clickable buttons would just work without a separate config.
+            var canvasGo = new GameObject("WinCanvas",
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasScaler),
+                typeof(GraphicRaycaster),
+                typeof(UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster));
+            canvasGo.transform.SetParent(transform, false);
+            var canvas = canvasGo.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            var canvasRT = (RectTransform)canvasGo.transform;
+            canvasRT.sizeDelta = new Vector2(900, 500);
+            canvasGo.transform.localScale = Vector3.one * 0.002f;
+
+            // CanvasFollowPlayer keeps the panel in front of the local camera
+            // with the same easing the loading menu uses.
+            canvasGo.AddComponent<CanvasFollowPlayer>();
+
+            // Panel backing — rounded-sliced sprite, paper-cream tint.
+            var panelGo = new GameObject("Panel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            var panelRT = (RectTransform)panelGo.transform;
+            panelRT.SetParent(canvasRT, false);
+            panelRT.anchorMin = panelRT.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRT.pivot = new Vector2(0.5f, 0.5f);
+            panelRT.anchoredPosition = Vector2.zero;
+            panelRT.sizeDelta = new Vector2(820, 420);
+            var panelImg = panelGo.GetComponent<Image>();
+            var panelSprite = LoadPanelSprite();
+            if (panelSprite != null)
             {
-                Vector3 fwd = cam.transform.forward; fwd.y = 0f;
-                if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.forward;
-                fwd.Normalize();
-                transform.position = cam.transform.position + fwd * distanceFromPlayer + Vector3.up * (anchorHeight - cam.transform.position.y + cam.transform.position.y);
-                transform.position = new Vector3(transform.position.x, anchorHeight, transform.position.z);
+                panelImg.sprite = panelSprite;
+                panelImg.type = Image.Type.Sliced;
             }
+            panelImg.color = new Color(0.99f, 0.97f, 0.92f, 1f);
+            panelImg.raycastTarget = false;
 
-            // Backing card — paper-cream cube, dramatic-sized.
-            _backing = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            _backing.name = "Backing";
-            var col = _backing.GetComponent<Collider>(); if (col != null) Destroy(col);
-            _backing.transform.SetParent(transform, false);
-            _backing.transform.localPosition = new Vector3(0f, 0f, 0.02f);
-            _backing.transform.localScale = new Vector3(2.4f, 0.85f, 0.04f);
-            var sh = Shader.Find("Universal Render Pipeline/Lit");
-            if (sh == null) sh = Shader.Find("Standard");
-            var bgMat = new Material(sh);
-            var paperCream = new Color(0.99f, 0.97f, 0.92f, 1f);
-            if (bgMat.HasProperty("_BaseColor")) bgMat.SetColor("_BaseColor", paperCream);
-            else bgMat.color = paperCream;
-            _backing.GetComponent<Renderer>().sharedMaterial = bgMat;
+            // Winner label — bold, accent orange ink, large.
+            var winnerLbl = BuildLabel(canvasRT, nameUpper + " WINS!", new Vector2(0f, 70f),
+                                        new Vector2(800, 160),
+                                        fontSize: 96, color: new Color(0.85f, 0.40f, 0.10f),
+                                        bold: true, italic: false,
+                                        outlineColor: new Color32(20, 14, 8, 255), outlineWidth: 0.25f);
+            winnerLbl.text = nameUpper + " WINS!";
 
-            // Winner label — big, bold, accent colour.
-            var winnerGo = new GameObject("WinnerLabel");
-            winnerGo.transform.SetParent(transform, false);
-            winnerGo.transform.localPosition = new Vector3(0f, 0.10f, 0f);
-            _winnerLabel = winnerGo.AddComponent<TextMeshPro>();
-            _winnerLabel.text = "PLAYER WINS!";
-            _winnerLabel.fontSize = 1.40f;
-            _winnerLabel.fontStyle = FontStyles.Bold;
-            _winnerLabel.alignment = TextAlignmentOptions.Center;
-            _winnerLabel.color = new Color(0.85f, 0.40f, 0.10f);
-            _winnerLabel.outlineColor = new Color32(20, 14, 8, 255);
-            _winnerLabel.outlineWidth = 0.25f;
-            _winnerLabel.enableWordWrapping = false;
-            _winnerLabel.font = LoadSophiecomicFont() ?? _winnerLabel.font;
-            _winnerLabel.rectTransform.sizeDelta = new Vector2(2.30f, 0.45f);
+            // Flavor sub-line.
+            BuildLabel(canvasRT, "Returning to title…", new Vector2(0f, -90f),
+                       new Vector2(700, 80),
+                       fontSize: 36, color: new Color(0.18f, 0.14f, 0.10f),
+                       bold: false, italic: true,
+                       outlineColor: new Color32(255, 255, 255, 200), outlineWidth: 0.16f);
 
-            // Flavor label — sub line.
-            var flavorGo = new GameObject("FlavorLabel");
-            flavorGo.transform.SetParent(transform, false);
-            flavorGo.transform.localPosition = new Vector3(0f, -0.25f, 0f);
-            _flavorLabel = flavorGo.AddComponent<TextMeshPro>();
-            _flavorLabel.text = "Returning to title…";
-            _flavorLabel.fontSize = 0.42f;
-            _flavorLabel.fontStyle = FontStyles.Italic;
-            _flavorLabel.alignment = TextAlignmentOptions.Center;
-            _flavorLabel.color = new Color(0.18f, 0.14f, 0.10f);
-            _flavorLabel.outlineColor = new Color32(255, 255, 255, 200);
-            _flavorLabel.outlineWidth = 0.16f;
-            _flavorLabel.enableWordWrapping = false;
-            _flavorLabel.font = LoadSophiecomicFont() ?? _flavorLabel.font;
-            _flavorLabel.rectTransform.sizeDelta = new Vector2(2.20f, 0.20f);
-
-            StartCoroutine(PopInAnimation());
+            StartCoroutine(PopInAnimation(canvasGo.transform));
         }
 
-        private IEnumerator PopInAnimation()
+        private TMP_Text BuildLabel(RectTransform parent, string text, Vector2 anchoredPos, Vector2 size,
+                                     int fontSize, Color color, bool bold, bool italic,
+                                     Color32 outlineColor, float outlineWidth)
         {
-            transform.localScale = Vector3.zero;
+            var go = new GameObject("Lbl_" + text.Replace(" ", "_"), typeof(RectTransform), typeof(CanvasRenderer));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(parent, false);
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = anchoredPos;
+            rt.sizeDelta = size;
+
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.fontSize = fontSize;
+            FontStyles fs = FontStyles.Normal;
+            if (bold)   fs |= FontStyles.Bold;
+            if (italic) fs |= FontStyles.Italic;
+            tmp.fontStyle = fs;
+            tmp.color = color;
+            tmp.raycastTarget = false;
+            tmp.outlineColor = outlineColor;
+            tmp.outlineWidth = outlineWidth;
+            var font = LoadSophiecomicFont();
+            if (font != null) tmp.font = font;
+            return tmp;
+        }
+
+        private IEnumerator PopInAnimation(Transform t)
+        {
+            t.localScale = Vector3.zero;
             const float dur = 0.45f;
-            float t = 0f;
-            while (t < dur)
+            float elapsed = 0f;
+            while (elapsed < dur && t != null)
             {
-                t += Time.deltaTime;
-                float p = Mathf.Clamp01(t / dur);
-                // Elastic-ish overshoot.
+                elapsed += Time.deltaTime;
+                float p = Mathf.Clamp01(elapsed / dur);
                 float k = 1f - Mathf.Pow(1f - p, 3f);
                 float scale = Mathf.Lerp(0f, 1.1f, k);
                 if (p > 0.85f) scale = Mathf.Lerp(1.1f, 1.0f, (p - 0.85f) / 0.15f);
-                transform.localScale = Vector3.one * scale;
+                t.localScale = Vector3.one * 0.002f * scale;
                 yield return null;
             }
-            transform.localScale = Vector3.one;
+            if (t != null) t.localScale = Vector3.one * 0.002f;
         }
 
         private IEnumerator SpeakAnnouncement(string winnerName)
         {
-            // One-frame delay so the banner is visible before the voice fires.
             yield return null;
             var announcer = FindFirstObjectByType<Tigerverse.Voice.Announcer>();
             if (announcer != null)
@@ -147,25 +157,15 @@ namespace Tigerverse.UI
             if (gameObject != null) Destroy(gameObject);
         }
 
-        private void LateUpdate()
+        private static Sprite LoadPanelSprite()
         {
-            _phase += Time.deltaTime;
-            if (_cam == null) _cam = Camera.main;
-            if (_cam == null) return;
-
-            // Billboard toward the camera (world UI faces the camera's -Z so we
-            // align +Z with the player's forward direction).
-            Vector3 fwd = _cam.transform.forward; fwd.y = 0f;
-            if (fwd.sqrMagnitude < 1e-4f) return;
-            fwd.Normalize();
-            transform.rotation = Quaternion.LookRotation(fwd, Vector3.up);
-
-            // Subtle bob so it doesn't feel static.
-            if (_winnerLabel != null)
-            {
-                float pulse = 1f + Mathf.Sin(_phase * 2.5f) * 0.04f;
-                _winnerLabel.transform.localScale = Vector3.one * pulse;
-            }
+            if (_cachedPanelSprite != null) return _cachedPanelSprite;
+            _cachedPanelSprite = Resources.Load<Sprite>("UI/panel-rounded-sm");
+#if UNITY_EDITOR
+            if (_cachedPanelSprite == null)
+                _cachedPanelSprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Generated/panel-rounded-sm.png");
+#endif
+            return _cachedPanelSprite;
         }
 
         private static TMP_FontAsset LoadSophiecomicFont()

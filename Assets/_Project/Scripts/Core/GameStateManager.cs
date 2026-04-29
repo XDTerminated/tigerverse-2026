@@ -449,11 +449,33 @@ namespace Tigerverse.Core
             // ─── Initialize and bind ──────────────────────────────────────
             if (resolvedBattle != null)
             {
+                // Wire the runtime-spawned monster transforms + cries into the
+                // BattleManager. Without these, PlayMoveSequence early-exits
+                // every cast because casterPivot/defenderPivot are null —
+                // which is why moves had no animation, no SFX, and no
+                // damage-popup. The prefab can't carry these refs because
+                // they only exist after MonsterSpawnSlotPresenter spawns the
+                // hatch-revealed monsters at runtime.
+                resolvedBattle.monsterAPivot = (monsterAGo != null) ? monsterAGo.transform : null;
+                resolvedBattle.monsterBPivot = (monsterBGo != null) ? monsterBGo.transform : null;
+                resolvedBattle.cryA = (monsterAGo != null) ? monsterAGo.GetComponentInChildren<MonsterCry>() : null;
+                resolvedBattle.cryB = (monsterBGo != null) ? monsterBGo.GetComponentInChildren<MonsterCry>() : null;
+                Debug.Log($"[GameStateManager] BattleManager pivot wiring: monsterAPivot={(resolvedBattle.monsterAPivot != null ? "OK" : "NULL")} monsterBPivot={(resolvedBattle.monsterBPivot != null ? "OK" : "NULL")}");
+
                 resolvedBattle.Initialize(statsA, statsB);
                 resolvedBattle.OnHPChanged.RemoveListener(HandleHPChanged);  // idempotent on rematch
                 resolvedBattle.OnHPChanged.AddListener(HandleHPChanged);
                 resolvedBattle.OnBattleEnd.RemoveListener(HandleBattleEnd);
                 resolvedBattle.OnBattleEnd.AddListener(HandleBattleEnd);
+
+                // Sports-announcer commentary. Reuse the existing component
+                // if one's already attached (rematch) so we don't pile up
+                // duplicate listeners.
+                var commentator = GetComponent<Tigerverse.Combat.BattleCommentator>();
+                if (commentator == null) commentator = gameObject.AddComponent<Tigerverse.Combat.BattleCommentator>();
+                string nameA = (statsA != null && !string.IsNullOrEmpty(statsA.displayName)) ? statsA.displayName : "Player 1";
+                string nameB = (statsB != null && !string.IsNullOrEmpty(statsB.displayName)) ? statsB.displayName : "Player 2";
+                commentator.Bind(resolvedBattle, nameA, nameB);
             }
 
             if (voiceRouter != null)
@@ -612,8 +634,22 @@ namespace Tigerverse.Core
             if (hpBars.Length > 1 && hpBars[1] != null) hpBars[1].SetHP(hpB, maxB);
         }
 
+        private bool _endSequenceStarted;
+
         private void HandleBattleEnd(int winnerIndex)
         {
+            // Idempotency guard. BattleManager fires OnBattleEnd from both
+            // RPC_PlayResolved and the Render-side WinnerIndex watcher (the
+            // latter is a backup so non-authority clients still see the win
+            // even if the RPC didn't fire their listener). Both paths can
+            // race; we only want one EndSequence per match.
+            if (_endSequenceStarted)
+            {
+                Debug.Log($"[GameStateManager] HandleBattleEnd called again with winner={winnerIndex}, ignoring (EndSequence already running).");
+                return;
+            }
+            _endSequenceStarted = true;
+
             SetState(AppState.Result);
 
             // Fade out the battle background music.
@@ -625,6 +661,7 @@ namespace Tigerverse.Core
                 battle.OnBattleEnd.RemoveListener(HandleBattleEnd);
             }
 
+            Debug.Log($"[GameStateManager] HandleBattleEnd winner={winnerIndex}, starting EndSequence (8s → return to title).");
             StartCoroutine(EndSequence(winnerIndex));
         }
 
