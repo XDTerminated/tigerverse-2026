@@ -231,6 +231,49 @@ namespace Tigerverse.Combat
             return MakeClip("Pop", data);
         }
 
+        // ─── Victory sting (battle KO) ──────────────────────────────────
+        private static AudioClip _cachedVictorySting;
+        public static AudioClip GetVictorySting()
+        {
+            if (_cachedVictorySting != null) return _cachedVictorySting;
+            // 2-second rising C-major arpeggio that lands on a sustained
+            // chord. Sawtooth-flavoured so it reads "brass fanfare" rather
+            // than "synth pad" — punchy enough to cut through the fading
+            // battle music.
+            const float dur = 2.0f;
+            int n = SampleCount(dur);
+            var data = new float[n];
+            float[] notes = { 523.25f, 659.25f, 783.99f, 1046.50f }; // C5 E5 G5 C6
+            for (int i = 0; i < n; i++)
+            {
+                float t = (float)i / SampleRate;
+                float p = (float)i / n;
+
+                // Rising arpeggio in the first 1.0s — each note 0.25s.
+                float arp = 0f;
+                int noteIdx = Mathf.Clamp((int)(p * 4f), 0, 3);
+                if (p < 0.85f)
+                {
+                    float f = notes[noteIdx];
+                    float saw = (2f * (t * f - Mathf.Floor(t * f + 0.5f)));
+                    float noteEnv = 1f - Mathf.Abs((p * 4f) - noteIdx - 0.5f) * 2f;
+                    arp = saw * Mathf.Clamp01(noteEnv) * 0.55f;
+                }
+                // Sustained chord across the whole clip, swelling in.
+                float chord = (
+                    Mathf.Sin(2f * Mathf.PI * notes[0] * t) +
+                    Mathf.Sin(2f * Mathf.PI * notes[1] * t) * 0.85f +
+                    Mathf.Sin(2f * Mathf.PI * notes[2] * t) * 0.70f
+                ) / 3f;
+                float chordEnv = AdsrEnv(p, 0.10f, 0.10f, 0.85f, 0.20f);
+                float chordSwell = Mathf.SmoothStep(0.20f, 1.0f, p);
+
+                data[i] = (arp + chord * chordEnv * chordSwell) * 0.55f;
+            }
+            _cachedVictorySting = MakeClip("VictorySting", data);
+            return _cachedVictorySting;
+        }
+
         // ─── Helpers ────────────────────────────────────────────────────
         private static int SampleCount(float duration)
         {

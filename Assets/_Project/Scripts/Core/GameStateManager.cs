@@ -84,6 +84,12 @@ namespace Tigerverse.Core
                 OnStateChanged = new StateChangedEvent();
             }
 
+            // Surface "opponent disconnected" once they leave the Photon room
+            // mid-match, so the surviving client doesn't sit there waiting on
+            // a player who's never coming back. Wired here in Awake so the
+            // subscription survives state changes (battle → result → menu).
+            if (runner != null) runner.OnOpponentLeft += HandleOpponentLeft;
+
             SetState(AppState.Title);
         }
 
@@ -468,14 +474,13 @@ namespace Tigerverse.Core
                 resolvedBattle.OnBattleEnd.RemoveListener(HandleBattleEnd);
                 resolvedBattle.OnBattleEnd.AddListener(HandleBattleEnd);
 
-                // Sports-announcer commentary. Reuse the existing component
-                // if one's already attached (rematch) so we don't pile up
-                // duplicate listeners.
-                var commentator = GetComponent<Tigerverse.Combat.BattleCommentator>();
-                if (commentator == null) commentator = gameObject.AddComponent<Tigerverse.Combat.BattleCommentator>();
-                string nameA = (statsA != null && !string.IsNullOrEmpty(statsA.displayName)) ? statsA.displayName : "Player 1";
-                string nameB = (statsB != null && !string.IsNullOrEmpty(statsB.displayName)) ? statsB.displayName : "Player 2";
-                commentator.Bind(resolvedBattle, nameA, nameB);
+                // Battle commentator intentionally disabled per request — was
+                // talking over the win banner and the move audio. If we want
+                // it back, reinstate the AddComponent + Bind block below.
+                // Also unbind any existing commentator so a previous match's
+                // listeners don't keep firing.
+                var staleCommentator = GetComponent<Tigerverse.Combat.BattleCommentator>();
+                if (staleCommentator != null) staleCommentator.Unbind();
             }
 
             if (voiceRouter != null)
@@ -627,11 +632,91 @@ namespace Tigerverse.Core
             Tigerverse.Voice.BattleMusicPlayer.Instance.Play();
         }
 
+        private int _lastSeenLocalHp = -1;
+
         private void HandleHPChanged(int hpA, int maxA, int hpB, int maxB)
         {
-            if (hpBars == null) return;
-            if (hpBars.Length > 0 && hpBars[0] != null) hpBars[0].SetHP(hpA, maxA);
-            if (hpBars.Length > 1 && hpBars[1] != null) hpBars[1].SetHP(hpB, maxB);
+            if (hpBars != null)
+            {
+                if (hpBars.Length > 0 && hpBars[0] != null) hpBars[0].SetHP(hpA, maxA);
+                if (hpBars.Length > 1 && hpBars[1] != null) hpBars[1].SetHP(hpB, maxB);
+            }
+
+            // Subtle controller haptics when the LOCAL player's monster takes
+            // damage. Sells the impact way more than just a bar tick. We
+            // pulse both controllers briefly; amplitude/duration tuned to
+            // feel like a tap, not a buzz.
+            int localHp = (localCasterIndex == 0) ? hpA : hpB;
+            if (_lastSeenLocalHp >= 0 && localHp < _lastSeenLocalHp)
+            {
+                int delta = _lastSeenLocalHp - localHp;
+                // Bigger hits get a slightly stronger pulse, capped.
+                float amp = Mathf.Clamp(0.35f + delta * 0.015f, 0.35f, 0.85f);
+                PulseControllerHaptics(amp, 0.12f);
+
+                // Visual punch on top of the haptics — only for hits big
+                // enough to feel weighty (>20 damage). Smaller chip damage
+                // stays subtle so the screen isn't constantly red-flashing.
+                if (delta > 20) Tigerverse.UI.HitImpactFx.Trigger(delta);
+            }
+            _lastSeenLocalHp = localHp;
+        }
+
+        private static void PulseControllerHaptics(float amplitude, float duration)
+        {
+            PulseOne(UnityEngine.XR.XRNode.LeftHand,  amplitude, duration);
+            PulseOne(UnityEngine.XR.XRNode.RightHand, amplitude, duration);
+        }
+
+        private static void PulseOne(UnityEngine.XR.XRNode node, float amplitude, float duration)
+        {
+            var dev = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(node);
+            if (!dev.isValid) return;
+            if (!dev.TryGetHapticCapabilities(out var caps) || !caps.supportsImpulse) return;
+            dev.SendHapticImpulse(0, Mathf.Clamp01(amplitude), Mathf.Max(0.01f, duration));
+        }
+
+        // ─── Disconnect handling ────────────────────────────────────────
+        private bool _opponentLeftHandled;
+
+        private void HandleOpponentLeft()
+        {
+            // Only act during an active match — after a clean win the room
+            // teardown will fire OnPlayerLeft for the other side too and we
+            // don't want to spam an overlay during the normal return flow.
+            if (currentState != AppState.Battle && currentState != AppState.Hatch
+                && currentState != AppState.DrawWait && currentState != AppState.Lobby) return;
+            if (_opponentLeftHandled) return;
+            _opponentLeftHandled = true;
+            Debug.LogWarning("[GameStateManager] Opponent left mid-match. Showing disconnect overlay and force-returning to title in 10s.");
+            StartCoroutine(OpponentLeftFlow());
+        }
+
+        private System.Collections.IEnumerator OpponentLeftFlow()
+        {
+            // Stop battle music + tear down listeners so a stray RPC arrival
+            // can't fire a phantom OnBattleEnd while we're showing the
+            // disconnect overlay.
+            try { Tigerverse.Voice.BattleMusicPlayer.Instance.Stop(); } catch { }
+            if (battle != null)
+            {
+                battle.OnHPChanged.RemoveListener(HandleHPChanged);
+                battle.OnBattleEnd.RemoveListener(HandleBattleEnd);
+            }
+
+            // Reuse the WinScreenBanner shell — same canvas style, just
+            // different text. Spawn one with the disconnect copy.
+            try { Tigerverse.UI.WinScreenBanner.Spawn("Opponent disconnected"); }
+            catch (Exception e) { Debug.LogWarning($"[GameStateManager] Disconnect banner spawn failed: {e.Message}"); }
+
+            // Same backup-Invoke pattern as EndSequence.
+            CancelInvoke(nameof(ForceReloadTitleSceneNow));
+            Invoke(nameof(ForceReloadTitleSceneNow), 12f);
+
+            yield return new WaitForSecondsRealtime(10f);
+            yield return ReturnToTitle();
+            CancelInvoke(nameof(ForceReloadTitleSceneNow));
+            _opponentLeftHandled = false;
         }
 
         private bool _endSequenceStarted;
@@ -652,8 +737,22 @@ namespace Tigerverse.Core
 
             SetState(AppState.Result);
 
-            // Fade out the battle background music.
+            // Fade out the battle background music and play a procedurally
+            // synthesised victory sting (rising C-major arpeggio + sustained
+            // chord) so the silence between the music cut and the win banner
+            // doesn't feel like dead air. Plays at the local camera position
+            // so it's audible 2D anywhere.
             Tigerverse.Voice.BattleMusicPlayer.Instance.Stop();
+            try
+            {
+                var sting = Tigerverse.Combat.ProceduralMoveSfx.GetVictorySting();
+                if (sting != null)
+                {
+                    Vector3 pos = (Camera.main != null) ? Camera.main.transform.position : Vector3.zero;
+                    AudioSource.PlayClipAtPoint(sting, pos, 0.85f);
+                }
+            }
+            catch (Exception e) { Debug.LogWarning($"[GameStateManager] Victory sting playback threw: {e.Message}"); }
 
             if (battle != null)
             {
@@ -665,9 +764,22 @@ namespace Tigerverse.Core
             StartCoroutine(EndSequence(winnerIndex));
         }
 
+        private const float ResultBannerSeconds = 8f;
+        private const float ForceReloadBackupSeconds = 14f;
+
         private IEnumerator EndSequence(int winnerIndex)
         {
             Debug.Log($"[GameStateManager] EndSequence start. winner={winnerIndex} isMaster={(runner != null && runner.Runner != null && runner.Runner.IsSharedModeMasterClient)}");
+
+            // Hard backup: if the coroutine stalls for any reason (timeScale
+            // hitting 0, MonoBehaviour disable during Photon teardown,
+            // exception inside ReturnToTitle, scene load no-op, etc.) fire
+            // a force-reload via Invoke. Invoke runs independently of the
+            // coroutine state and survives as long as Bootstrap (the
+            // DontDestroyOnLoad host of GameStateManager) is alive.
+            CancelInvoke(nameof(ForceReloadTitleSceneNow));
+            Invoke(nameof(ForceReloadTitleSceneNow), ForceReloadBackupSeconds);
+
             // Allow a frame so the result UI can settle, then capture screenshot.
             yield return null;
             try
@@ -694,8 +806,10 @@ namespace Tigerverse.Core
             try { Tigerverse.UI.WinScreenBanner.Spawn(winnerName); }
             catch (Exception e) { Debug.LogError($"[GameStateManager] WinScreenBanner.Spawn threw: {e.Message}"); }
 
-            Debug.Log("[GameStateManager] EndSequence waiting 8s before reloading title…");
-            yield return new WaitForSeconds(8f);
+            Debug.Log("[GameStateManager] EndSequence waiting 8s (realtime) before reloading title…");
+            // Realtime so a Photon-disconnect handler tweaking Time.timeScale
+            // can't strand the master on the win screen forever.
+            yield return new WaitForSecondsRealtime(ResultBannerSeconds);
             Debug.Log("[GameStateManager] EndSequence 8s elapsed, calling ReturnToTitle.");
 
             // Tear down Photon and reload the title scene so both players
@@ -705,6 +819,27 @@ namespace Tigerverse.Core
             // reload would have it try to spawn into a stale room state.
             yield return ReturnToTitle();
             Debug.Log("[GameStateManager] EndSequence finished.");
+            // ReturnToTitle reaches LoadScene before this point — if we got
+            // this far the backup Invoke is unnecessary.
+            CancelInvoke(nameof(ForceReloadTitleSceneNow));
+        }
+
+        private void ForceReloadTitleSceneNow()
+        {
+            // Last-ditch fallback fired by Invoke when EndSequence didn't
+            // complete its own scene reload within the budget. Skips the
+            // Photon shutdown (best-effort) and just slams the Title scene
+            // in. If Photon was holding state, the next StartShared on
+            // SessionRunner will recycle the runner cleanly anyway.
+            Debug.LogError("[GameStateManager] ForceReloadTitleSceneNow fired — coroutine stalled. Forcing scene reload.");
+            sessionCode = null;
+            statsA = null;
+            statsB = null;
+            monsterAGo = null;
+            monsterBGo = null;
+            _endSequenceStarted = false;
+            try { UnityEngine.SceneManagement.SceneManager.LoadScene("Title"); }
+            catch (Exception e) { Debug.LogError($"[GameStateManager] Force-reload LoadScene threw: {e.Message}"); }
         }
 
         private IEnumerator ReturnToTitle()
@@ -734,6 +869,8 @@ namespace Tigerverse.Core
             monsterAGo = null;
             monsterBGo = null;
             _endSequenceStarted = false;
+            _lastSeenLocalHp = -1;
+            _opponentLeftHandled = false;
             SetState(AppState.Title);
 
             // Reload by scene NAME — buildIndex returns -1 if the scene is

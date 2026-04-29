@@ -33,6 +33,8 @@ namespace Tigerverse.Net
 
         public event Action OnRunnerConnected;
         public event Action OnRunnerDisconnected;
+        /// <summary>Fires when a remote player leaves the Photon room (not the local player). Used by GameStateManager to surface a "opponent disconnected" overlay.</summary>
+        public event Action OnOpponentLeft;
 
         private void Awake()
         {
@@ -195,7 +197,15 @@ namespace Tigerverse.Net
         }
 
         public void OnPlayerJoined(NetworkRunner runner, PlayerRef player) { }
-        public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
+        public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+        {
+            // Fire only for remote players. Local-leave fires on a Shutdown
+            // anyway and would cause a phantom "opponent disconnected" toast
+            // on the device that just decided to return-to-title themselves.
+            if (player == runner.LocalPlayer) return;
+            Debug.Log($"[SessionRunner] Remote player {player} left the room.");
+            try { OnOpponentLeft?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+        }
         public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList) { }
 
         // The rest are required by the interface but unused here.

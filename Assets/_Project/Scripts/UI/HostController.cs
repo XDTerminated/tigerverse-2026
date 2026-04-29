@@ -31,12 +31,21 @@ namespace Tigerverse.UI
         public void OnHostClicked()
         {
             if (gsm == null) { Debug.LogError("[HostController] GameStateManager missing."); return; }
-            if (statusLabel != null) statusLabel.text = "Connecting...";
+            var dots = statusLabel != null ? statusLabel.GetComponent<AnimatedDotsLabel>() : null;
+            if (dots == null && statusLabel != null) dots = statusLabel.gameObject.AddComponent<AnimatedDotsLabel>();
+
+            if (dots != null) dots.SetMessage("Hosting", animated: true);
+            else if (statusLabel != null) statusLabel.text = "Hosting...";
+
             gsm.StartHosting();
-            // Code is generated synchronously inside StartHosting; show it immediately.
+
+            // Code is generated synchronously inside StartHosting; once we
+            // have it, swap the dot-animated "Hosting…" copy for a static
+            // "Code: ABCD" line so the player can read it out loud.
             if (statusLabel != null && !string.IsNullOrEmpty(gsm.sessionCode))
             {
-                statusLabel.text = $"Code: {gsm.sessionCode}\n(give this to your friend)";
+                if (dots != null) dots.SetMessage($"Code: {gsm.sessionCode}\n(give this to your friend)", animated: false);
+                else statusLabel.text = $"Code: {gsm.sessionCode}\n(give this to your friend)";
             }
         }
     }
