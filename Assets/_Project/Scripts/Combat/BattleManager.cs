@@ -407,7 +407,10 @@ namespace Tigerverse.Combat
             {
                 AudioClip castClip = move.castSfx
                     ?? ProceduralMoveSfx.Get(move.element, ProceduralMoveSfx.Role.Cast);
-                if (castClip != null) AudioSource.PlayClipAtPoint(castClip, casterPivot.position);
+                // Lower default volume — procedural element SFX were
+                // overpowering the music + announcer. 0.40 is roughly
+                // half-perceived-loudness of full-volume.
+                if (castClip != null) AudioSource.PlayClipAtPoint(castClip, casterPivot.position, 0.40f);
             }
 
             // 3. Caster lunge animation (parallel, don't yield).
@@ -463,7 +466,7 @@ namespace Tigerverse.Combat
             {
                 AudioClip hitClip = move.hitSfx
                     ?? ProceduralMoveSfx.Get(move.element, ProceduralMoveSfx.Role.Hit);
-                if (hitClip != null) AudioSource.PlayClipAtPoint(hitClip, defenderPivot.position);
+                if (hitClip != null) AudioSource.PlayClipAtPoint(hitClip, defenderPivot.position, 0.50f);
             }
 
             // Move prefab vfx to defender if it was an assigned one.
@@ -473,11 +476,12 @@ namespace Tigerverse.Combat
                 Destroy(vfxInstance, 2f);
             }
 
-            // 7. Procedural impact burst + defender hit-shake.
+            // 7. Procedural impact burst + defender hit-shake + scale-pulse.
             if (defenderPivot != null)
             {
                 SpawnImpactBurst(defenderPivot.position, move.element);
-                StartCoroutine(HitShakeCoroutine(defenderPivot, 0.05f, 0.25f));
+                StartCoroutine(HitShakeCoroutine(defenderPivot, 0.06f, 0.28f));
+                StartCoroutine(ImpactPulseCoroutine(defenderPivot, 1.10f, 0.20f));
 
                 // Damage popup floating text (skip on heal/status).
                 if (damageDealt > 0)
@@ -486,6 +490,26 @@ namespace Tigerverse.Combat
 
             // 8. Tail wait so the shake/impact have time to be seen before next move.
             yield return new WaitForSeconds(0.25f);
+        }
+
+        // Brief squash-and-stretch on impact: scale up, then settle back to
+        // base. Layered with HitShakeCoroutine so the defender both jolts
+        // sideways and visibly absorbs the hit.
+        private IEnumerator ImpactPulseCoroutine(Transform t, float maxScale, float duration)
+        {
+            if (t == null || duration <= 0f) yield break;
+            Vector3 baseScale = t.localScale;
+            float elapsed = 0f;
+            while (elapsed < duration && t != null)
+            {
+                elapsed += Time.deltaTime;
+                float p = Mathf.Clamp01(elapsed / duration);
+                // Triangular envelope (0→1→0) so the pulse rises and settles.
+                float k = 1f - Mathf.Abs(p * 2f - 1f);
+                t.localScale = baseScale * Mathf.Lerp(1f, maxScale, k);
+                yield return null;
+            }
+            if (t != null) t.localScale = baseScale;
         }
 
         // --- Procedural FX helpers ----------------------------------------
@@ -563,16 +587,33 @@ namespace Tigerverse.Combat
             var col = orb.GetComponent<Collider>();
             if (col != null) Destroy(col);
             orb.transform.position = startPos;
-            orb.transform.localScale = Vector3.one * 0.18f;
+            orb.transform.localScale = Vector3.one * 0.22f;
 
+            Color tint = ElementTint(element);
             var rend = orb.GetComponent<Renderer>();
             if (rend != null)
             {
-                Color tint = ElementTint(element);
                 rend.sharedMaterial = MakeUnlitMaterial(tint);
                 rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 rend.receiveShadows = false;
             }
+
+            // Element-tinted trail behind the orb so the cast reads as a
+            // streak rather than a floating sphere.
+            var trail = orb.AddComponent<TrailRenderer>();
+            trail.time = 0.18f;
+            trail.startWidth = 0.16f;
+            trail.endWidth   = 0.02f;
+            trail.minVertexDistance = 0.005f;
+            trail.material = MakeUnlitMaterial(tint);
+            trail.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            trail.receiveShadows = false;
+            // Soft fade-out gradient so the trail tapers cleanly.
+            var grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(tint, 0f), new GradientColorKey(tint, 1f) },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+            trail.colorGradient = grad;
 
             var state = new ProceduralOrbState { gameObject = orb };
             StartCoroutine(AnimateOrb(orb, startPos, defender, duration, state));

@@ -749,7 +749,7 @@ namespace Tigerverse.Core
                 if (sting != null)
                 {
                     Vector3 pos = (Camera.main != null) ? Camera.main.transform.position : Vector3.zero;
-                    AudioSource.PlayClipAtPoint(sting, pos, 0.85f);
+                    AudioSource.PlayClipAtPoint(sting, pos, 0.55f);
                 }
             }
             catch (Exception e) { Debug.LogWarning($"[GameStateManager] Victory sting playback threw: {e.Message}"); }

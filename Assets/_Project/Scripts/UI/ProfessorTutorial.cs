@@ -165,6 +165,14 @@ namespace Tigerverse.UI
             // tree sway, ambient audio). All children are parented to the
             // returned GameObject so OnDestroy below cleans them up.
             _sceneEnhancer = Tigerverse.UI.PaperSceneEnhancer.Spawn(_stageCenter, Camera.main?.transform);
+            // Strip the visual sub-systems that render dark scribble quads
+            // (ground doodles, falling leaves, fairy particles). Keep the
+            // skybox + lighting + mountains + clouds + lanterns + flora +
+            // tree sway + ambience AUDIO (wind whisper, rustles, chimes).
+            if (_sceneEnhancer != null)
+            {
+                StripFleckSources(_sceneEnhancer);
+            }
             // Switch the voice router into open-mic mode for the duration of
             // the tutorial so the player can just speak naturally — no
             // push-to-talk friction during practice or Q&A.
@@ -173,6 +181,21 @@ namespace Tigerverse.UI
         }
 
         private GameObject _sceneEnhancer;
+
+        // Removes the PaperSceneEnhancer sub-systems that render dark scribble
+        // quads (which read as black flecks scattered across the scene).
+        // Keeps the audio (PaperAmbience) and stable visual layers (skybox,
+        // lighting, mountains, clouds, lanterns, flora, tree sway) intact.
+        private static void StripFleckSources(GameObject sceneRoot)
+        {
+            if (sceneRoot == null) return;
+            foreach (var c in sceneRoot.GetComponentsInChildren<Tigerverse.UI.PaperGroundDoodles>(true))
+                if (c != null) Destroy(c.gameObject);
+            foreach (var c in sceneRoot.GetComponentsInChildren<Tigerverse.UI.PaperLeaves>(true))
+                if (c != null) Destroy(c.gameObject);
+            foreach (var c in sceneRoot.GetComponentsInChildren<Tigerverse.UI.PaperFairies>(true))
+                if (c != null) Destroy(c.gameObject);
+        }
 
         // Hide every HatchingEggSequence in the scene while the tutorial
         // runs (the title scene preview-spawns one on the player's pad
@@ -465,7 +488,7 @@ namespace Tigerverse.UI
                     var localContainer = Instantiate(testPrefab);
                     localContainer.name = "BorrowedScribble";
                     localContainer.transform.SetParent(transform, worldPositionStays: true);
-                    localContainer.transform.position = _stageCenter - _stageForward * 0.5f + Vector3.up * borrowedScribbleVerticalOffset;
+                    localContainer.transform.position = _stageCenter - _stageForward * 2.5f + Vector3.up * borrowedScribbleVerticalOffset;
                     Vector3 localAwayFromPlayer = -_stageForward;
                     // Build rotation directly from Euler angles so X/Y/Z are
                     // directly settable in the inspector (composing with
@@ -532,7 +555,7 @@ namespace Tigerverse.UI
             // the player toward the dummy.) The vertical offset lifts the
             // model off the floor — _stageCenter sits at floor height so the
             // GLB pivot would otherwise spawn the body half-buried.
-            container.transform.position = _stageCenter - _stageForward * 0.5f + Vector3.up * borrowedScribbleVerticalOffset;
+            container.transform.position = _stageCenter - _stageForward * 2.5f + Vector3.up * borrowedScribbleVerticalOffset;
             // The scribble is the "attacker" in this trio — make it face
             // AWAY from the player toward the dummy further forward.
             Vector3 awayFromPlayer = -_stageForward;
@@ -574,7 +597,7 @@ namespace Tigerverse.UI
             // the Professor). dummyVerticalOffset stays exposed in the
             // inspector for fine tuning if a particular scene's floor
             // reference is offset.
-            root.transform.position = _stageCenter - _stageForward * 1.7f + Vector3.up * dummyVerticalOffset;
+            root.transform.position = _stageCenter - _stageForward * 4.5f + Vector3.up * dummyVerticalOffset;
             if (_stageForward.sqrMagnitude > 1e-4f)
                 root.transform.rotation = Quaternion.LookRotation(_stageForward, Vector3.up);
             else
@@ -598,11 +621,31 @@ namespace Tigerverse.UI
             var fb = root.AddComponent<DummyHitFeedback>();
             fb.Initialize();
 
-            // Apply the project's paper-craft material so the dummy reads as
-            // a scribble instead of a default grey humanoid. Null drawing
-            // texture → DrawingColorize falls back to the paper material
-            // with a neutral grey tint.
-            try { DrawingColorize.Apply(root, MakeSolidTexture(new Color(0.85f, 0.78f, 0.65f)), 0f); }
+            // Apply a flat paper-cream material to every renderer on the
+            // dummy. Avoids DrawingColorize entirely — that shader's
+            // triplanar projection was producing scattered "ink stroke"
+            // artifacts on the multi-material Hoodie rig that read as black
+            // flecks around the stage. A plain URP/Lit material in the
+            // paper palette reads as "paper" without the artifact.
+            try
+            {
+                var sh = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                var paperMat = new Material(sh);
+                Color paperCream = new Color(0.95f, 0.92f, 0.84f, 1f);
+                if (paperMat.HasProperty("_BaseColor")) paperMat.SetColor("_BaseColor", paperCream);
+                else paperMat.color = paperCream;
+                if (paperMat.HasProperty("_Smoothness")) paperMat.SetFloat("_Smoothness", 0.05f);
+                if (paperMat.HasProperty("_Metallic"))   paperMat.SetFloat("_Metallic",   0f);
+                foreach (var rend in root.GetComponentsInChildren<Renderer>(includeInactive: true))
+                {
+                    if (rend == null) continue;
+                    var slots = rend.sharedMaterials;
+                    if (slots == null || slots.Length == 0) { rend.sharedMaterial = paperMat; continue; }
+                    var newSlots = new Material[slots.Length];
+                    for (int i = 0; i < slots.Length; i++) newSlots[i] = paperMat;
+                    rend.sharedMaterials = newSlots;
+                }
+            }
             catch (Exception e) { Debug.LogException(e); }
 
             _dummy = root;
@@ -703,7 +746,7 @@ namespace Tigerverse.UI
             }
             else
             {
-                _professor?.Celebrate();
+                /* Professor stays in Idle during attacks per request. */
             }
 
             yield return PerformThunderBolt();
@@ -744,7 +787,7 @@ namespace Tigerverse.UI
             }
 
             if (_stopRequested) yield break;
-            _professor?.Celebrate();
+            /* Professor stays in Idle during attacks per request. */
             yield return SpeakLine("You've got the basics! Keep practicing on the dummy. Just shout any move name.");
         }
 
@@ -792,7 +835,7 @@ namespace Tigerverse.UI
             }
             else
             {
-                _professor?.Celebrate();
+                /* Professor stays in Idle during attacks per request. */
             }
 
             // Fire the custom animation either way (player-cast or demo).
@@ -846,7 +889,7 @@ namespace Tigerverse.UI
             if (_borrowedScribble == null && _dummy == null) yield break;
 
             // Professor visibly casts the spell.
-            _professor?.Celebrate();
+            /* Professor stays in Idle during attacks per request. */
 
             // (Disabled — the Adventurer FBX's pointing clip read as the
             // Professor "whipping" his own scribble during the attack which
@@ -1067,8 +1110,8 @@ namespace Tigerverse.UI
             // direction toward the target. Fallback uses the same 0.5m
             // forward offset that LoadBorrowedScribble() applies.
             Vector3 origin = _borrowedScribble != null
-                ? _borrowedScribble.transform.position + Vector3.up * 0.4f
-                : _stageCenter - _stageForward * 0.5f + Vector3.up * 0.5f;
+                ? _borrowedScribble.transform.position - _stageForward.normalized * 0.30f + Vector3.up * 0.4f
+                : _stageCenter - _stageForward * 2.5f + Vector3.up * 0.5f;
 
             var go = new GameObject("PracticeBurstFx");
             go.transform.SetParent(transform, worldPositionStays: true);
@@ -1122,7 +1165,7 @@ namespace Tigerverse.UI
         private IEnumerator PlayMoveAnimation(string moveKey)
         {
             // Professor visibly casts (Sword_Slash) whenever a move is demoed.
-            _professor?.Celebrate();
+            /* Professor stays in Idle during attacks per request. */
 
             string k = (moveKey ?? "").ToLowerInvariant().Trim();
             switch (k)
@@ -1177,8 +1220,8 @@ namespace Tigerverse.UI
             target = Vector3.zero;
             if (_dummy == null) return false;
             origin = _borrowedScribble != null
-                ? _borrowedScribble.transform.position + Vector3.up * 0.4f
-                : _stageCenter - _stageForward * 0.5f + Vector3.up * 0.5f;
+                ? _borrowedScribble.transform.position - _stageForward.normalized * 0.30f + Vector3.up * 0.4f
+                : _stageCenter - _stageForward * 2.5f + Vector3.up * 0.5f;
             target = _dummy.transform.position + Vector3.up * 0.4f;
             return true;
         }
@@ -1927,7 +1970,7 @@ namespace Tigerverse.UI
 
             var go = new GameObject("LightningFx");
             go.transform.SetParent(transform, false);
-            go.transform.position = _borrowedScribble.transform.position + Vector3.up * 0.4f;
+            go.transform.position = _borrowedScribble.transform.position - _stageForward.normalized * 0.30f + Vector3.up * 0.4f;
 
             var ps = go.AddComponent<ParticleSystem>();
             var psr = go.GetComponent<ParticleSystemRenderer>();
@@ -1990,7 +2033,7 @@ namespace Tigerverse.UI
         private void SpawnLightningPreFlash()
         {
             if (_borrowedScribble == null || _dummy == null) return;
-            Vector3 origin = _borrowedScribble.transform.position + Vector3.up * 0.4f;
+            Vector3 origin = _borrowedScribble.transform.position - _stageForward.normalized * 0.30f + Vector3.up * 0.4f;
 
             var fx = BuildFx("LightningFlash", origin, _dummy.transform.position, new Color(1f, 0.98f, 0.7f));
             var main = fx.ps.main;
@@ -2047,7 +2090,7 @@ namespace Tigerverse.UI
         private void SpawnLightningForks()
         {
             if (_borrowedScribble == null || _dummy == null) return;
-            Vector3 origin = _borrowedScribble.transform.position + Vector3.up * 0.4f;
+            Vector3 origin = _borrowedScribble.transform.position - _stageForward.normalized * 0.30f + Vector3.up * 0.4f;
             Vector3 target = _dummy.transform.position + Vector3.up * 0.4f;
             Vector3 axis = (target - origin).normalized;
 
