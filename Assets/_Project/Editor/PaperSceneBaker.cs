@@ -45,6 +45,49 @@ namespace Tigerverse.EditorTools
             Debug.Log("[PaperSceneBaker] Spawned PaperScenery at " + spawnAt + ". Save the scene to persist.");
         }
 
+        [MenuItem("Tigerverse/Bake Ground Extension (Paper)")]
+        public static void BakeGroundExtension()
+        {
+            var enh = Object.FindFirstObjectByType<Tigerverse.UI.PaperSceneEnhancer>();
+            Vector3 center = enh != null ? enh.transform.position : Vector3.zero;
+            Transform parent = enh != null ? enh.transform : null;
+
+            foreach (var c in Object.FindObjectsByType<Tigerverse.UI.PaperGroundExtension>(FindObjectsSortMode.None))
+                Object.DestroyImmediate(c.gameObject);
+
+            var ext = Tigerverse.UI.PaperGroundExtension.Spawn(center);
+            if (ext != null && parent != null) ext.transform.SetParent(parent, worldPositionStays: true);
+
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Debug.Log("[PaperSceneBaker] Baked PaperGroundExtension at " + center + ".");
+        }
+
+        [MenuItem("Tigerverse/Bake Light Flora + Doodles")]
+        public static void BakeLightFloraDoodles()
+        {
+            var enh = Object.FindFirstObjectByType<Tigerverse.UI.PaperSceneEnhancer>();
+            Vector3 center = enh != null ? enh.transform.position : Vector3.zero;
+            Transform parent = enh != null ? enh.transform : null;
+
+            // Strip any prior bakes so re-running doesn't stack copies.
+            foreach (var c in Object.FindObjectsByType<Tigerverse.UI.PaperFlora>(FindObjectsSortMode.None))
+                Object.DestroyImmediate(c.gameObject);
+            foreach (var c in Object.FindObjectsByType<Tigerverse.UI.PaperGroundDoodles>(FindObjectsSortMode.None))
+                Object.DestroyImmediate(c.gameObject);
+
+            // Sparse counts — tune by hand if still too dense / sparse.
+            var flora   = Tigerverse.UI.PaperFlora.Spawn(center, radius: 7f, count: 6);
+            var doodles = Tigerverse.UI.PaperGroundDoodles.Spawn(center, radius: 14f, count: 30);
+            if (parent != null)
+            {
+                if (flora   != null) flora.transform.SetParent(parent, worldPositionStays: true);
+                if (doodles != null) doodles.transform.SetParent(parent, worldPositionStays: true);
+            }
+
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Debug.Log("[PaperSceneBaker] Baked sparse flora (6) + ground doodles (30) at " + center + ". Save the scene to persist.");
+        }
+
         [MenuItem("Tigerverse/Remove Paper Scenery from Scene")]
         public static void Remove()
         {

@@ -68,11 +68,27 @@ namespace Tigerverse.UI
                         if (floorRend != null) mat = floorRend.sharedMaterial;
                     }
                 }
-                if (mat == null) mat = MakeUnlitOpaque(GroundCream);
+                if (mat == null) mat = LoadPaperMaterialOrFallback();
                 mr.sharedMaterial = mat;
                 mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                mr.receiveShadows = false;
+                mr.receiveShadows = true;
             }
+        }
+
+        // Pull the project's paper-grey material so the extension reads as
+        // the same surface as the rest of the world. Falls back to a flat
+        // unlit cream only if the asset is missing.
+        private static Material LoadPaperMaterialOrFallback()
+        {
+#if UNITY_EDITOR
+            // Paper_Grey_81 is the same shade the playable Floor uses, so
+            // even when matchFloorMaterial misses (Floor not yet in scene),
+            // the seam stays invisible.
+            var loaded = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/_Project/Materials/Paper/Paper_Grey_81.mat");
+            if (loaded != null) return loaded;
+#endif
+            return MakeUnlitOpaque(GroundCream);
         }
 
         private void BuildBarriers()

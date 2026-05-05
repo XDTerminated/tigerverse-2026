@@ -160,19 +160,10 @@ namespace Tigerverse.UI
         {
             BuildScene();
             HideTitleSceneEggs();
-            // Spawn the full paper-craft scenery layer (skybox, mountains,
-            // clouds, lights, lanterns, fairies, flora, doodles, leaves,
-            // tree sway, ambient audio). All children are parented to the
-            // returned GameObject so OnDestroy below cleans them up.
-            _sceneEnhancer = Tigerverse.UI.PaperSceneEnhancer.Spawn(_stageCenter, Camera.main?.transform);
-            // Strip the visual sub-systems that render dark scribble quads
-            // (ground doodles, falling leaves, fairy particles). Keep the
-            // skybox + lighting + mountains + clouds + lanterns + flora +
-            // tree sway + ambience AUDIO (wind whisper, rustles, chimes).
-            if (_sceneEnhancer != null)
-            {
-                StripFleckSources(_sceneEnhancer);
-            }
+            // Scenery is now baked into the scene via Tigerverse → Bake
+            // Paper Scenery (PaperSceneBaker). No runtime spawn — kept
+            // re-stacking and overpopulating on every play. If you need
+            // ambience audio / tree sway, bake those once too.
             // Switch the voice router into open-mic mode for the duration of
             // the tutorial so the player can just speak naturally — no
             // push-to-talk friction during practice or Q&A.
