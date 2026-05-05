@@ -136,7 +136,7 @@ namespace Tigerverse.EditorTools
             // Paperize: every renderer under the new scatter root gets a
             // grey-tinted paper material so the props sit on the same
             // visual layer as the floor.
-            int paperized = PaperizeAll(root);
+            int paperized = PaperizeRoot(root);
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveOpenScenes();
@@ -144,7 +144,7 @@ namespace Tigerverse.EditorTools
             Debug.Log($"[ScatterEnv] Scattered {root.transform.childCount} env props (trees={TreesAroundRing}, rocks={InteriorRocks}, bushes={InteriorBushes}). Paperized {paperized} renderers.");
         }
 
-        private static int PaperizeAll(GameObject root)
+        public static int PaperizeRoot(GameObject root)
         {
             // Reuse the paper materials made by TigerversePaperizeEnvironment
             // when available; otherwise build them inline so this script
