@@ -115,12 +115,12 @@ namespace Tigerverse.UI
         // where we trigger the practice listening window.
         private static readonly string[] ScriptedLines =
         {
-            "Welcome to the world of Scribble Showdown! I'm Professor Pastel.",
-            "Your egg is still hatching, so why don't I lend you one of my old scribbles to teach you the ropes.",
-            "Combat in this world is turn based, so you and your opponent take turns making a move.",
-            "And here's the magical part. Every attack is voice activated. You simply say the move out loud.",
+            "Welcome to Scribble Showdown! I'm Professor Pastel.",
+            "Before you face a real opponent, I can let you borrow one of my old scribbles to practice with.",
+            "Combat is turn based, so you and your opponent take turns making a move.",
+            "Here's the magical part. Every attack is voice activated. You simply say the move out loud.",
             "Let's give it a try. Aim at that practice dummy and shout, THUNDER BOLT!",
-            "Beautiful! Just keep an eye on your scribble's HP, and you'll be just fine. Got any questions before we begin?"
+            "Beautiful! Just keep an eye on your scribble's HP and you'll be just fine. Any questions before we send you out?"
         };
 
         private const int LineIdx_LendScribble = 1;
@@ -181,6 +181,25 @@ namespace Tigerverse.UI
         }
 
         private GameObject _sceneEnhancer;
+        private ScribbleFollow _scribbleFollow;
+
+        // Attach a ScribbleFollow component so the borrowed scribble looks
+        // at the local camera (player) by default and switches to the dummy
+        // when an attack starts. Pitch/roll offsets stay constant so the
+        // model orientation correction is preserved.
+        private void AttachScribbleFollow(GameObject scribbleGo)
+        {
+            if (scribbleGo == null) return;
+            _scribbleFollow = scribbleGo.GetComponent<ScribbleFollow>();
+            if (_scribbleFollow == null) _scribbleFollow = scribbleGo.AddComponent<ScribbleFollow>();
+            Transform playerT = Camera.main != null ? Camera.main.transform : null;
+            Transform dummyT  = _dummy != null ? _dummy.transform : null;
+            _scribbleFollow.Init(
+                borrowedScribblePitchOffsetDeg,
+                borrowedScribbleYawOffsetDeg,
+                borrowedScribbleRollOffsetDeg,
+                playerT, dummyT);
+        }
 
         // Removes the PaperSceneEnhancer sub-systems that render dark scribble
         // quads (which read as black flecks scattered across the scene).
@@ -370,29 +389,30 @@ namespace Tigerverse.UI
         // none of it drifts when the player turns their head later.
         private void ComputeStageTransform()
         {
+            // Anchor the tutorial in the centre of the MAP (world origin)
+            // instead of relative to the player's current head position. This
+            // keeps the Professor + scribble + dummy in the same arena spot
+            // every session, no matter where the player physically stands.
+            // Orientation still uses the player's forward so they look at
+            // the action by default.
+            float floorY = transform.position.y;
+            _stageCenter = new Vector3(0f, floorY, 0f);
+
             var cam = Camera.main;
-            float floorY = transform.position.y; // slot's floor height
             if (cam != null)
             {
-                Vector3 camFwd = cam.transform.forward;
-                camFwd.y = 0f;
-                if (camFwd.sqrMagnitude < 1e-4f) camFwd = Vector3.forward;
-                camFwd.Normalize();
-
-                _stageCenter  = cam.transform.position + camFwd * 3.5f;
-                _stageCenter.y = floorY;
-                _stageForward = -camFwd; // from stage back toward player
-                _stageLeft    = Vector3.Cross(Vector3.up, _stageForward).normalized;
+                Vector3 fromStageToCam = cam.transform.position - _stageCenter;
+                fromStageToCam.y = 0f;
+                if (fromStageToCam.sqrMagnitude > 1e-4f)
+                    _stageForward = fromStageToCam.normalized;
+                else
+                    _stageForward = Vector3.back;
             }
             else
             {
-                // No camera (editor / headless) — fall back to slot-local
-                // offset so we still place the stage somewhere reasonable.
-                _stageCenter  = transform.position + transform.TransformVector(professorOffset);
-                _stageCenter.y = floorY;
                 _stageForward = -transform.forward;
-                _stageLeft    = Vector3.Cross(Vector3.up, _stageForward).normalized;
             }
+            _stageLeft = Vector3.Cross(Vector3.up, _stageForward).normalized;
         }
 
         // ─── Tutorial flow ──────────────────────────────────────────────
@@ -422,10 +442,21 @@ namespace Tigerverse.UI
 
                 if (i == LineIdx_LendScribble)
                 {
-                    SpawnDummy();
+                    // Reveal the borrowed scribble with a pop-in on this beat
+                    // ("I can let you borrow one of my old scribbles…").
+                    if (_borrowedScribble != null)
+                    {
+                        _borrowedScribble.SetActive(true);
+                        StartCoroutine(PopInScale(_borrowedScribble.transform, 0.60f));
+                    }
                 }
                 else if (i == LineIdx_PracticeCue)
                 {
+                    // Spawn the dummy on this beat — the line says "Aim at
+                    // that practice dummy and shout, THUNDER BOLT!" so the
+                    // dummy popping into existence right after the line
+                    // reads as an introduction.
+                    SpawnDummy();
                     yield return RunPracticeListenWindow();
                 }
             }
@@ -509,7 +540,10 @@ namespace Tigerverse.UI
                     try { DrawingColorize.Apply(localContainer, MakeSolidTexture(new Color(0.95f, 0.85f, 0.55f)), 0f); }
                     catch (Exception e) { Debug.LogException(e); }
                     _borrowedScribble = localContainer;
-                    StartCoroutine(PopInScale(localContainer.transform, 0.55f));
+                    AttachScribbleFollow(localContainer);
+                    // Hide until the Professor says the lend line — the
+                    // RunTutorial loop will reveal + pop-in on that beat.
+                    localContainer.SetActive(false);
                     Debug.Log($"[ProfessorTutorial] Using local test scribble model '{testScribbleResourcePath}' at {localContainer.transform.position}.");
                     yield break;
                 }
@@ -580,7 +614,10 @@ namespace Tigerverse.UI
             catch (Exception e) { Debug.LogException(e); }
 
             _borrowedScribble = container;
-            StartCoroutine(PopInScale(container.transform, 0.55f));
+            AttachScribbleFollow(container);
+            // Hide until the Professor says the lend line — the RunTutorial
+            // loop reveals + pop-ins on that beat.
+            container.SetActive(false);
             Debug.Log($"[ProfessorTutorial] Borrowed scribble spawned at {container.transform.position} scale={container.transform.localScale.x:F2} childCount={container.transform.childCount}");
         }
 
@@ -649,6 +686,9 @@ namespace Tigerverse.UI
             catch (Exception e) { Debug.LogException(e); }
 
             _dummy = root;
+            // Late-bind the scribble's attack target now that the dummy
+            // exists (LoadBorrowedScribble races SpawnDummy in some flows).
+            if (_scribbleFollow != null) _scribbleFollow.SetAttackTarget(root.transform);
 
             // Pop-in scale animation so the dummy doesn't just snap into the
             // scene at full size.
@@ -749,7 +789,12 @@ namespace Tigerverse.UI
                 /* Professor stays in Idle during attacks per request. */
             }
 
+            // Fire element-tinted cast/hit SFX alongside the visual.
+            StartCoroutine(PlayTutorialMoveSfx(Tigerverse.Combat.ElementType.Electric));
+            _scribbleFollow?.SetAttackMode(true);
             yield return PerformThunderBolt();
+            yield return new WaitForSeconds(0.5f);
+            _scribbleFollow?.SetAttackMode(false);
 
             // Guided tour through other moves — professor names each one,
             // player shouts it, custom animation plays. Falls through into
@@ -1168,6 +1213,19 @@ namespace Tigerverse.UI
             /* Professor stays in Idle during attacks per request. */
 
             string k = (moveKey ?? "").ToLowerInvariant().Trim();
+
+            // Scribble looks at the dummy while the attack plays out, then
+            // returns to looking at the player after a beat.
+            _scribbleFollow?.SetAttackMode(true);
+
+            // Element-tinted cast + hit SFX in parallel with the visual.
+            // Procedural clips from ProceduralMoveSfx (synthesized at runtime
+            // — same generator the multiplayer BattleManager uses), played
+            // via PlayClipAtPoint so they spatialise from the scribble and
+            // dummy positions. Volumes intentionally low (0.40 / 0.45) so
+            // they sit under the announcer voice.
+            StartCoroutine(PlayTutorialMoveSfx(MapMoveKeyToElement(k)));
+
             switch (k)
             {
                 case "fireball":     yield return PerformFireball();    break;
@@ -1181,6 +1239,44 @@ namespace Tigerverse.UI
                 case "thunderbolt":  yield return PerformThunderBolt(); break;
                 default:             yield return PerformGenericBurst(k); break;
             }
+
+            // Brief beat after the impact so the scribble holds its dummy-
+            // aimed pose, then returns to following the player.
+            yield return new WaitForSeconds(0.5f);
+            _scribbleFollow?.SetAttackMode(false);
+        }
+
+        private static Tigerverse.Combat.ElementType MapMoveKeyToElement(string k)
+        {
+            switch (k)
+            {
+                case "fireball":     return Tigerverse.Combat.ElementType.Fire;
+                case "water gun":
+                case "watergun":     return Tigerverse.Combat.ElementType.Water;
+                case "ice shard":
+                case "iceshard":     return Tigerverse.Combat.ElementType.Ice;
+                case "leaf blade":
+                case "leafblade":    return Tigerverse.Combat.ElementType.Grass;
+                case "thunder bolt":
+                case "thunderbolt":  return Tigerverse.Combat.ElementType.Electric;
+                default:             return Tigerverse.Combat.ElementType.Neutral;
+            }
+        }
+
+        private IEnumerator PlayTutorialMoveSfx(Tigerverse.Combat.ElementType element)
+        {
+            Vector3 castPos = _borrowedScribble != null ? _borrowedScribble.transform.position : _stageCenter;
+            Vector3 hitPos  = _dummy != null ? _dummy.transform.position : _stageCenter - _stageForward * 4.5f;
+
+            var castClip = Tigerverse.Combat.ProceduralMoveSfx.Get(element, Tigerverse.Combat.ProceduralMoveSfx.Role.Cast);
+            if (castClip != null) AudioSource.PlayClipAtPoint(castClip, castPos, 0.65f);
+
+            // Hit SFX timed to land roughly when the visual reaches the dummy
+            // (matches the cast-arrival delay used inside the Perform* methods).
+            yield return new WaitForSeconds(0.45f);
+
+            var hitClip = Tigerverse.Combat.ProceduralMoveSfx.Get(element, Tigerverse.Combat.ProceduralMoveSfx.Role.Hit);
+            if (hitClip != null) AudioSource.PlayClipAtPoint(hitClip, hitPos, 0.75f);
         }
 
         // Tiny wind-up jump on the borrowed scribble. Used as the lead-in
@@ -2208,8 +2304,46 @@ namespace Tigerverse.UI
                 return;
             }
 
+            // Exit phrase detection — if the player signals they're done,
+            // skip the rest of Q&A + continuous practice and route the
+            // Professor straight to BeginLeave so we return to title.
+            if (IsTutorialExitPhrase(trimmed.ToLowerInvariant()))
+            {
+                Debug.Log($"[ProfessorTutorial] Q&A heard exit phrase: '{trimmed}' — ending tutorial.");
+                _qaMode = false;
+                StartCoroutine(QaExitFlow());
+                return;
+            }
+
             Debug.Log($"[ProfessorTutorial] Q&A heard: '{trimmed}'");
             _pendingQuestions.Enqueue(trimmed);
+        }
+
+        private static bool IsTutorialExitPhrase(string lower)
+        {
+            // "no questions", "no thanks", "nothing", "i'm good", "i'm done",
+            // "i'm ready", "let's go", "i'm fine", "all good", "i'm okay"
+            if (lower.Contains("no question")) return true;
+            if (lower.Contains("no thanks") || lower.Contains("no thank")) return true;
+            if (lower.Contains("nothing")) return true;
+            if (lower.Contains("im good") || lower.Contains("i am good") || lower.Contains("i'm good")) return true;
+            if (lower.Contains("im done") || lower.Contains("i am done") || lower.Contains("i'm done")) return true;
+            if (lower.Contains("im ready") || lower.Contains("i am ready") || lower.Contains("i'm ready")) return true;
+            if (lower.Contains("lets go") || lower.Contains("let's go")) return true;
+            if (lower.Contains("im fine") || lower.Contains("i am fine") || lower.Contains("i'm fine")) return true;
+            if (lower.Contains("all good") || lower.Contains("im all good")) return true;
+            if (lower.Contains("im okay") || lower.Contains("i'm okay") || lower.Contains("im ok")) return true;
+            return false;
+        }
+
+        private IEnumerator QaExitFlow()
+        {
+            // Brief sign-off line, then graceful leave (which destroys the
+            // tutorial GameObject and fires OnTutorialFinished — TitleScreen
+            // re-shows the main menu in response).
+            if (voiceRouter != null) voiceRouter.OnTranscript.RemoveListener(OnPlayerSpoke);
+            yield return SpeakLine("Sounds good! Off you go, trainer.");
+            BeginLeave();
         }
 
         private IEnumerator AnswerQuestion(string question)

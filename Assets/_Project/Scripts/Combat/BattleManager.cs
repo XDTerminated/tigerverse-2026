@@ -415,10 +415,11 @@ namespace Tigerverse.Combat
             {
                 AudioClip castClip = move.castSfx
                     ?? ProceduralMoveSfx.Get(move.element, ProceduralMoveSfx.Role.Cast);
-                // Lower default volume — procedural element SFX were
-                // overpowering the music + announcer. 0.40 is roughly
-                // half-perceived-loudness of full-volume.
-                if (castClip != null) AudioSource.PlayClipAtPoint(castClip, casterPivot.position, 0.40f);
+                // Per-move pitch variation so two moves of the same element
+                // (e.g. Fireball + Lava Slam) sound related but distinct.
+                if (castClip != null)
+                    ProceduralMoveSfx.PlayAtPosition(castClip, casterPivot.position, 0.65f,
+                        ProceduralMoveSfx.PitchFor(move.displayName));
             }
 
             // 3. Caster lunge animation (parallel, don't yield).
@@ -481,7 +482,9 @@ namespace Tigerverse.Combat
             {
                 AudioClip hitClip = move.hitSfx
                     ?? ProceduralMoveSfx.Get(move.element, ProceduralMoveSfx.Role.Hit);
-                if (hitClip != null) AudioSource.PlayClipAtPoint(hitClip, defenderPivot.position, 0.50f);
+                if (hitClip != null)
+                    ProceduralMoveSfx.PlayAtPosition(hitClip, defenderPivot.position, 0.75f,
+                        ProceduralMoveSfx.PitchFor(move.displayName));
             }
 
             // Move prefab vfx to defender if it was an assigned one.

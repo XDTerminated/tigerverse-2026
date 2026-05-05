@@ -28,6 +28,48 @@ namespace Tigerverse.Combat
             return clip;
         }
 
+        /// <summary>
+        /// Hash-derived pitch variation for a move's display name. Returns a
+        /// pitch in the [0.88, 1.12] range — same-element moves pick
+        /// different points in the range so they sound related but distinct.
+        /// Pass to a temporary AudioSource (not PlayClipAtPoint) since
+        /// PlayClipAtPoint doesn't expose pitch.
+        /// </summary>
+        public static float PitchFor(string moveDisplayName)
+        {
+            if (string.IsNullOrEmpty(moveDisplayName)) return 1f;
+            int hash = 0;
+            for (int i = 0; i < moveDisplayName.Length; i++)
+                hash = hash * 31 + moveDisplayName[i];
+            // Map the hash into a stable -1…+1 float, then scale to ±0.12.
+            float t = ((hash & 0xFF) / 255f) * 2f - 1f; // -1..1
+            return 1f + t * 0.12f;
+        }
+
+        /// <summary>
+        /// Spawn a temporary GameObject + AudioSource so we can play a clip
+        /// with a specific pitch (PlayClipAtPoint hardcodes pitch=1). Self-
+        /// destroys after the clip finishes. Use for distinguishing same-
+        /// element moves (e.g. two Fire moves at different pitches).
+        /// </summary>
+        public static void PlayAtPosition(AudioClip clip, Vector3 worldPos, float volume, float pitch)
+        {
+            if (clip == null) return;
+            var go = new GameObject("ProcMoveSfxOneShot");
+            go.transform.position = worldPos;
+            var src = go.AddComponent<AudioSource>();
+            src.clip = clip;
+            src.volume = Mathf.Clamp01(volume);
+            src.pitch = Mathf.Clamp(pitch, 0.5f, 2f);
+            src.spatialBlend = 1f;
+            src.dopplerLevel = 0f;
+            src.minDistance = 1f;
+            src.maxDistance = 30f;
+            src.Play();
+            // Destroy after the (pitched) clip duration with a small buffer.
+            Object.Destroy(go, clip.length / Mathf.Max(0.5f, src.pitch) + 0.20f);
+        }
+
         private static AudioClip Synth(ElementType element, Role role)
         {
             // Cast = anticipation (sweep up), Hit = impact (sweep down + body).
@@ -59,8 +101,9 @@ namespace Tigerverse.Combat
                 float saw = (2f * (t * freq - Mathf.Floor(t * freq + 0.5f)));
                 float square = Mathf.Sign(Mathf.Sin(2f * Mathf.PI * freq * 0.5f * t));
                 float env = AdsrEnv(p, 0.05f, 0.1f, 0.6f, 0.25f);
-                data[i] = (0.55f * saw + 0.45f * square) * env * 0.45f;
+                data[i] = (0.55f * saw + 0.45f * square) * env * 0.70f;
             }
+            ApplyTransientBurst(data, 0.020f, 0.55f);
             return MakeClip("ZapCast", data);
         }
 
@@ -76,8 +119,9 @@ namespace Tigerverse.Combat
                 float freq = Mathf.Lerp(2400f, 600f, p);
                 float tone = Mathf.Sin(2f * Mathf.PI * freq * t);
                 float env = Mathf.Pow(1f - p, 1.6f);
-                data[i] = (0.7f * noise + 0.3f * tone) * env * 0.55f;
+                data[i] = (0.7f * noise + 0.3f * tone) * env * 0.80f;
             }
+            ApplyTransientBurst(data, 0.018f, 0.65f);
             return MakeClip("ZapHit", data);
         }
 
@@ -94,9 +138,13 @@ namespace Tigerverse.Combat
                 float noise = (Random.value * 2f - 1f);
                 lp += (noise - lp) * 0.18f;
                 float body = Mathf.Sin(2f * Mathf.PI * freq * t);
-                float env = AdsrEnv(p, 0.08f, 0.15f, 0.7f, 0.4f);
-                data[i] = (0.6f * lp + 0.4f * body) * env * 0.50f;
+                // Low-end 80Hz "thud" pulse adds impact — without it the
+                // roar reads as smooth ambience instead of an attack.
+                float sub = Mathf.Sin(2f * Mathf.PI * 80f * t) * Mathf.Exp(-p * 6f);
+                float env = AdsrEnv(p, 0.04f, 0.10f, 0.8f, 0.4f); // sharper attack
+                data[i] = (0.50f * lp + 0.30f * body + 0.35f * sub) * env * 0.85f;
             }
+            ApplyTransientBurst(data, 0.025f, 0.65f);
             return MakeClip("Roar", data);
         }
 
@@ -112,8 +160,9 @@ namespace Tigerverse.Combat
                 float wob = Mathf.Sin(2f * Mathf.PI * 18f * t) * 0.06f;
                 float tone = Mathf.Sin(2f * Mathf.PI * freq * (t + wob));
                 float env = AdsrEnv(p, 0.05f, 0.1f, 0.7f, 0.3f);
-                data[i] = tone * env * 0.45f;
+                data[i] = tone * env * 0.65f;
             }
+            ApplyTransientBurst(data, 0.020f, 0.45f);
             return MakeClip("Bubble", data);
         }
 
@@ -128,8 +177,9 @@ namespace Tigerverse.Combat
                 float noise = (Random.value * 2f - 1f);
                 lp += (noise - lp) * Mathf.Lerp(0.06f, 0.30f, p);
                 float env = Mathf.Pow(1f - p, 1.2f);
-                data[i] = lp * env * 0.55f;
+                data[i] = lp * env * 0.80f;
             }
+            ApplyTransientBurst(data, 0.018f, 0.55f);
             return MakeClip("Splash", data);
         }
 
@@ -177,8 +227,9 @@ namespace Tigerverse.Combat
                 float noise = (Random.value * 2f - 1f);
                 lp += (noise - lp) * 0.06f;
                 float env = AdsrEnv(p, 0.10f, 0.10f, 0.85f, 0.30f);
-                data[i] = lp * env * 0.55f;
+                data[i] = lp * env * 0.78f;
             }
+            ApplyTransientBurst(data, 0.025f, 0.55f);
             return MakeClip("Rumble", data);
         }
 
@@ -194,8 +245,9 @@ namespace Tigerverse.Combat
                 float body = Mathf.Sin(2f * Mathf.PI * freq * t);
                 float noise = (Random.value * 2f - 1f) * 0.3f;
                 float env = Mathf.Pow(1f - p, 1.2f);
-                data[i] = (body + noise) * env * 0.55f;
+                data[i] = (body + noise) * env * 0.80f;
             }
+            ApplyTransientBurst(data, 0.020f, 0.65f);
             return MakeClip("Thud", data);
         }
 
@@ -211,8 +263,9 @@ namespace Tigerverse.Combat
                 float saw = (2f * (t * freq - Mathf.Floor(t * freq + 0.5f)));
                 float noise = (Random.value * 2f - 1f) * 0.25f;
                 float env = AdsrEnv(p, 0.08f, 0.15f, 0.75f, 0.30f);
-                data[i] = (saw + noise) * env * 0.45f;
+                data[i] = (saw + noise) * env * 0.65f;
             }
+            ApplyTransientBurst(data, 0.022f, 0.50f);
             return MakeClip("Growl", data);
         }
 
@@ -275,6 +328,22 @@ namespace Tigerverse.Combat
         }
 
         // ─── Helpers ────────────────────────────────────────────────────
+        // Adds a noise transient burst to the FRONT of a clip so it hits
+        // hard instead of fading in. burstSeconds = how long the burst
+        // lasts; peak = peak amplitude (0..1). Use sparingly — too long
+        // and the clip starts with a clicky "pop".
+        private static void ApplyTransientBurst(float[] data, float burstSeconds, float peak)
+        {
+            int burstSamples = Mathf.Min(data.Length, (int)(SampleRate * burstSeconds));
+            for (int i = 0; i < burstSamples; i++)
+            {
+                float p = (float)i / burstSamples;
+                float env = (1f - p) * (1f - p); // sharp decay
+                float noise = (Random.value * 2f - 1f) * peak * env;
+                data[i] = Mathf.Clamp(data[i] + noise, -1f, 1f);
+            }
+        }
+
         private static int SampleCount(float duration)
         {
             return Mathf.Max(64, Mathf.RoundToInt(SampleRate * duration));
