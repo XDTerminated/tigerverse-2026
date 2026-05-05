@@ -49,7 +49,7 @@ namespace Tigerverse.UI
 
         private void Start()
         {
-            int n = Mathf.Clamp(count, 8, 30);
+            int n = Mathf.Clamp(count, 0, 30);
             var bin = new GameObject("Flora");
             bin.transform.SetParent(transform, worldPositionStays: false);
 

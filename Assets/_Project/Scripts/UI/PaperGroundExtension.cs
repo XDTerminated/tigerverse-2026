@@ -53,10 +53,23 @@ namespace Tigerverse.UI
             var mr = plane.GetComponent<MeshRenderer>();
             if (mr != null)
             {
-                mr.sharedMaterial = MakeUnlitOpaque(GroundCream);
+                mr.sharedMaterial = LoadPaperMaterialOrFallback();
                 mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                mr.receiveShadows = false;
+                mr.receiveShadows = true;
             }
+        }
+
+        // Pull the project's paper-grey material so the extension reads as
+        // the same surface as the rest of the world. Falls back to a flat
+        // unlit cream only if the asset is missing.
+        private static Material LoadPaperMaterialOrFallback()
+        {
+#if UNITY_EDITOR
+            var loaded = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/_Project/Materials/Paper/Paper_Grey_72.mat");
+            if (loaded != null) return loaded;
+#endif
+            return MakeUnlitOpaque(GroundCream);
         }
 
         private void BuildBarriers()

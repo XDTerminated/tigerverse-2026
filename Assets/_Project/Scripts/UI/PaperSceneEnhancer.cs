@@ -26,9 +26,9 @@ namespace Tigerverse.UI
         [SerializeField] private bool spawnGroundDoodles   = true;
         [SerializeField] private bool spawnGroundExtension = true;
         [SerializeField] private float floraRadius         = 7f;
-        [SerializeField] private int   floraCount          = 16;
-        [SerializeField] private float doodleRadius        = 24f;
-        [SerializeField] private int   doodleCount         = 600;
+        [SerializeField] private int   floraCount          = 8;
+        [SerializeField] private float doodleRadius        = 16f;
+        [SerializeField] private int   doodleCount         = 60;
 
         [Header("Air layer")]
         [SerializeField] private bool spawnLeaves   = false;
