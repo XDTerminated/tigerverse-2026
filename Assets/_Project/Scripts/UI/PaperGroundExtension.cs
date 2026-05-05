@@ -12,11 +12,16 @@ namespace Tigerverse.UI
     public class PaperGroundExtension : MonoBehaviour
     {
         [SerializeField] private float playableHalfExtent = 25f;
-        [SerializeField] private float extensionHalfExtent = 80f;
+        [SerializeField] private float extensionHalfExtent = 250f;
         [SerializeField] private float barrierHeight = 4f;
         [SerializeField] private float groundY = -0.06f;
 
         private static readonly Color GroundCream = new Color(0.92f, 0.90f, 0.84f, 1f);
+
+        // If true, the extension plane reuses the Floor's exact material so
+        // the spawn baseplate reads as one continuous surface from origin to
+        // the mountain ring (no visible seam at the playable boundary).
+        [SerializeField] private bool matchFloorMaterial = true;
 
         public static GameObject Spawn(Vector3 center)
         {
@@ -53,7 +58,18 @@ namespace Tigerverse.UI
             var mr = plane.GetComponent<MeshRenderer>();
             if (mr != null)
             {
-                mr.sharedMaterial = MakeUnlitOpaque(GroundCream);
+                Material mat = null;
+                if (matchFloorMaterial)
+                {
+                    var floor = GameObject.Find("Floor");
+                    if (floor != null)
+                    {
+                        var floorRend = floor.GetComponent<Renderer>();
+                        if (floorRend != null) mat = floorRend.sharedMaterial;
+                    }
+                }
+                if (mat == null) mat = MakeUnlitOpaque(GroundCream);
+                mr.sharedMaterial = mat;
                 mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 mr.receiveShadows = false;
             }

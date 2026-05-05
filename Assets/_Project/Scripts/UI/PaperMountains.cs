@@ -17,11 +17,11 @@ namespace Tigerverse.UI
 
         private static readonly RingSpec[] Rings =
         {
-            new RingSpec { radius =  30f, count =  8, width = 18f, height = 11f,
+            new RingSpec { radius = 100f, count = 14, width =  60f, height = 32f,
                            tint = new Color(0.45f, 0.45f, 0.55f, 1f) },
-            new RingSpec { radius =  44f, count =  9, width = 22f, height = 13f,
+            new RingSpec { radius = 150f, count = 16, width =  72f, height = 38f,
                            tint = new Color(0.62f, 0.62f, 0.70f, 1f) },
-            new RingSpec { radius =  62f, count = 10, width = 26f, height = 15f,
+            new RingSpec { radius = 200f, count = 18, width =  84f, height = 44f,
                            tint = new Color(0.78f, 0.78f, 0.84f, 1f) },
         };
 

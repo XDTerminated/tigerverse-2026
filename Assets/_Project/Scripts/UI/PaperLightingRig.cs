@@ -88,8 +88,8 @@ namespace Tigerverse.UI
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
             RenderSettings.fogColor = new Color(0.86f, 0.88f, 0.92f, 1f);
-            RenderSettings.fogStartDistance = 10f;
-            RenderSettings.fogEndDistance = 55f;
+            RenderSettings.fogStartDistance = 15f;
+            RenderSettings.fogEndDistance = 190f;
         }
 
         void BuildRig()

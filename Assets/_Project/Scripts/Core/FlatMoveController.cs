@@ -17,6 +17,12 @@ namespace Tigerverse.Core
         // Disable this when an XR display is active so we don't double-move.
         [SerializeField] bool disableWhenXrActive = true;
 
+        // Clamp the rig to the playable Floor footprint so WASD can't escape
+        // into the wilderness past the invisible barriers (which are physics
+        // colliders that this position-based locomotion bypasses).
+        [SerializeField] bool clampToPlayArea = true;
+        [SerializeField] float playAreaHalfExtent = 25f;
+
         private Transform _origin;
 
         private void Awake()
@@ -41,7 +47,13 @@ namespace Tigerverse.Core
                 // Move in XR Origin's forward space (so movement is relative to the rig's orientation).
                 Vector3 worldMove = _origin.TransformDirection(move.normalized) * moveSpeed * Time.deltaTime;
                 worldMove.y = 0; // keep on ground
-                _origin.position += worldMove;
+                Vector3 newPos = _origin.position + worldMove;
+                if (clampToPlayArea)
+                {
+                    newPos.x = Mathf.Clamp(newPos.x, -playAreaHalfExtent, playAreaHalfExtent);
+                    newPos.z = Mathf.Clamp(newPos.z, -playAreaHalfExtent, playAreaHalfExtent);
+                }
+                _origin.position = newPos;
             }
 
             float yaw = 0f;

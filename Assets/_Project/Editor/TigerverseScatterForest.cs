@@ -27,15 +27,17 @@ namespace Tigerverse.EditorTools
         // half-extent in PaperGroundExtension) so trees never poke into the
         // arena. OuterRadius reaches the far mountain ring (62m).
         private const float InnerRadius = 26f;
-        private const float OuterRadius = 60f;
+        private const float OuterRadius = 195f;
 
-        // Density. ~140 trees gives a clear forest mass without choking
-        // editor perf on Quest builds; tune lower if frame time tanks.
-        private const int TreeCount = 140;
+        // Density. 1200 trees with inner-biased sampling reads as a thick
+        // forest wall right outside the spawn barriers, thinning toward
+        // the mountain ring.
+        private const int TreeCount = 1200;
 
         // Don't drop a tree within this distance of an existing mountain
         // billboard quad — overlapping a mountain reads as Z-fighting.
-        private const float MountainKeepout = 3.5f;
+        // Bumped to match the larger mountain quad widths.
+        private const float MountainKeepout = 8f;
 
         [MenuItem("Tigerverse/Lobby -> Scatter Forest Ring")]
         public static void Apply()
@@ -62,7 +64,9 @@ namespace Tigerverse.EditorTools
                 if (n.Contains("cactus")) return false;
                 if (n.Contains("rock") || n.Contains("bush") || n.Contains("plant") || n.Contains("grass")) return false;
                 if (n.Contains("lilypad") || n.Contains("woodlog") || n.Contains("treestump")) return false;
-                return n.Contains("tree") || n.StartsWith("willow") || n.StartsWith("palmtree");
+                if (n.Contains("palmtree")) return false; // spindly trunks dominate
+                if (n.Contains("dead")) return false; // bare branches read as poles, not forest
+                return n.Contains("tree") || n.StartsWith("willow");
             }).ToList();
 
             if (trees.Count == 0)
@@ -85,17 +89,18 @@ namespace Tigerverse.EditorTools
             {
                 attempts++;
 
-                // Polar sample biased toward mid-radius via sqrt-weighted
-                // distribution so the outer rim isn't visibly thinner.
+                // Inner-biased radial sample: linear lerp on r (not r²) so
+                // density per m² rises toward the spawn edge — the player
+                // sees a thick forest wall, not a sparse far-away ring.
                 double u = rng.NextDouble();
-                float r = Mathf.Sqrt(Mathf.Lerp(InnerRadius * InnerRadius, OuterRadius * OuterRadius, (float)u));
+                float r = Mathf.Lerp(InnerRadius, OuterRadius, (float)u);
                 float ang = (float)(rng.NextDouble() * Mathf.PI * 2.0);
                 var pos = new Vector3(Mathf.Cos(ang) * r, 0f, Mathf.Sin(ang) * r);
 
                 if (TooCloseToMountain(pos, mountainPoints)) continue;
 
                 var pick = trees[rng.Next(trees.Count)];
-                Spawn(root.transform, pick, pos, rng, scaleMin: 0.55f, scaleMax: 1.30f);
+                Spawn(root.transform, pick, pos, rng, scaleMin: 0.55f, scaleMax: 1.00f);
                 placed++;
             }
 
@@ -111,7 +116,7 @@ namespace Tigerverse.EditorTools
         private static List<Vector3> ComputeMountainPoints()
         {
             var pts = new List<Vector3>();
-            (float radius, int count)[] rings = { (30f, 8), (44f, 9), (62f, 10) };
+            (float radius, int count)[] rings = { (100f, 14), (150f, 16), (200f, 18) };
             foreach (var (radius, count) in rings)
             {
                 for (int i = 0; i < count; i++)
