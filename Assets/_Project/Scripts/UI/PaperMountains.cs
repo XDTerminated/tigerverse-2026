@@ -15,14 +15,20 @@ namespace Tigerverse.UI
             public Color tint;
         }
 
+        // URP/Unlit doesn't apply RenderSettings fog, so the mountains can't
+        // rely on the global linear fog to recede atmospherically. Instead
+        // we author the rings already faded toward the skybox horizon
+        // (~0.84 grey) so the silhouettes feel like distant haze rather
+        // than dark cardboard cutouts. Closest ring stays a touch heavier
+        // to keep depth ordering legible.
         private static readonly RingSpec[] Rings =
         {
             new RingSpec { radius = 100f, count = 14, width =  60f, height = 32f,
-                           tint = new Color(0.45f, 0.45f, 0.55f, 1f) },
+                           tint = new Color(0.66f, 0.66f, 0.70f, 1f) },
             new RingSpec { radius = 150f, count = 16, width =  72f, height = 38f,
-                           tint = new Color(0.62f, 0.62f, 0.70f, 1f) },
+                           tint = new Color(0.78f, 0.78f, 0.81f, 1f) },
             new RingSpec { radius = 200f, count = 18, width =  84f, height = 44f,
-                           tint = new Color(0.78f, 0.78f, 0.84f, 1f) },
+                           tint = new Color(0.88f, 0.88f, 0.90f, 1f) },
         };
 
         private static readonly Color PaperCream = new Color(0.96f, 0.92f, 0.82f, 1f);
@@ -50,12 +56,29 @@ namespace Tigerverse.UI
                 Texture2D tex = BuildSilhouetteTexture(r);
                 Material mat = BuildMaterial(tex, spec.tint);
 
+                // Per-ring deterministic jitter so identical seeds reproduce
+                // the same arrangement on repeated builds.
+                var rng = new System.Random(7919 + r * 131);
+
                 for (int i = 0; i < spec.count; i++)
                 {
                     float ang = (i / (float)spec.count) * Mathf.PI * 2f;
+                    // Angular and radial jitter so the ring stops feeling
+                    // like a perfectly even chorus line.
+                    float angJitter = (float)(rng.NextDouble() - 0.5) * (Mathf.PI * 2f / spec.count) * 0.45f;
+                    float radJitter = (float)(rng.NextDouble() - 0.5) * spec.radius * 0.08f;
+                    float a = ang + angJitter;
+                    float radius = spec.radius + radJitter;
                     Vector3 pos = center + new Vector3(
-                        Mathf.Cos(ang) * spec.radius, 0f,
-                        Mathf.Sin(ang) * spec.radius);
+                        Mathf.Cos(a) * radius, 0f,
+                        Mathf.Sin(a) * radius);
+
+                    // Per-mountain scale variation breaks the "same width,
+                    // same height" silhouette repetition.
+                    float wScale = Mathf.Lerp(0.85f, 1.15f, (float)rng.NextDouble());
+                    float hScale = Mathf.Lerp(0.78f, 1.18f, (float)rng.NextDouble());
+                    float w = spec.width * wScale;
+                    float h = spec.height * hScale;
 
                     var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
                     quad.name = "Mountain_" + r + "_" + i;
@@ -63,8 +86,8 @@ namespace Tigerverse.UI
                     if (col != null) Destroy(col);
                     quad.transform.SetParent(ringRoot.transform, worldPositionStays: true);
                     // Anchor base near ground (y=0), height extends upward.
-                    quad.transform.position = pos + Vector3.up * (spec.height * 0.5f);
-                    quad.transform.localScale = new Vector3(spec.width, spec.height, 1f);
+                    quad.transform.position = pos + Vector3.up * (h * 0.5f);
+                    quad.transform.localScale = new Vector3(w, h, 1f);
 
                     var mr = quad.GetComponent<MeshRenderer>();
                     if (mr != null)

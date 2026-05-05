@@ -8,11 +8,14 @@ namespace Tigerverse.UI
     public class PaperSkybox : MonoBehaviour
     {
         // Greyscale paper. No warmth, no color — just paper-light at the
-        // top fading to paper-shadow at the horizon.
-        static readonly Color BgMid = new Color(0.86f, 0.86f, 0.86f, 1f);
+        // top fading to paper-shadow at the horizon. Top sits a touch below
+        // pure white so paper-grey foreground objects don't disappear into
+        // the dome, and the horizon band is bright enough that the
+        // mountain ring (~0.88 grey) feels like soft haze, not stark cuts.
+        static readonly Color BgMid = new Color(0.84f, 0.84f, 0.86f, 1f);
         static readonly Color AmbientCream = new Color(0.92f, 0.92f, 0.92f, 1f);
-        static readonly Color GradientTop = new Color(0.97f, 0.97f, 0.97f, 1f);
-        static readonly Color GradientHorizon = new Color(0.74f, 0.74f, 0.74f, 1f);
+        static readonly Color GradientTop = new Color(0.93f, 0.93f, 0.95f, 1f);
+        static readonly Color GradientHorizon = new Color(0.86f, 0.86f, 0.88f, 1f);
 
         const float DomeRadius = 450f;
         const int GradientHeight = 512;
