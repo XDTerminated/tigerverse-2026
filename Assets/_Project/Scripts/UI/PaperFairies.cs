@@ -51,7 +51,10 @@ namespace Tigerverse.UI
             {
                 var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
                 var col = quad.GetComponent<Collider>();
-                if (col != null) Destroy(col);
+                if (col != null)
+                {
+                    if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+                }
                 quad.name = "Fairy_" + i;
                 quad.transform.SetParent(transform, false);
 

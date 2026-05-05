@@ -58,7 +58,10 @@ namespace Tigerverse.UI
                 var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
                 quad.name = "PaperCloud_" + i;
                 var col = quad.GetComponent<Collider>();
-                if (col != null) Destroy(col);
+                if (col != null)
+                {
+                    if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+                }
 
                 quad.transform.SetParent(transform, worldPositionStays: true);
                 quad.transform.position = pos;

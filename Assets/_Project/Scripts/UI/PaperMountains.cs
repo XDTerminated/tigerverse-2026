@@ -83,7 +83,10 @@ namespace Tigerverse.UI
                     var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
                     quad.name = "Mountain_" + r + "_" + i;
                     var col = quad.GetComponent<Collider>();
-                    if (col != null) Destroy(col);
+                    if (col != null)
+                    {
+                        if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+                    }
                     quad.transform.SetParent(ringRoot.transform, worldPositionStays: true);
                     // Anchor base near ground (y=0), height extends upward.
                     quad.transform.position = pos + Vector3.up * (h * 0.5f);

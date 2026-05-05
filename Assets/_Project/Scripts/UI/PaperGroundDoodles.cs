@@ -51,7 +51,10 @@ namespace Tigerverse.UI
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             quad.name = "Doodle_" + index;
             var col = quad.GetComponent<Collider>();
-            if (col != null) Destroy(col);
+            if (col != null)
+            {
+                if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+            }
 
             quad.transform.SetParent(transform, true);
             quad.transform.position = pos;
@@ -193,7 +196,7 @@ namespace Tigerverse.UI
             mat.mainTexture = tex;
 
             float tint = Random.Range(0.85f, 1.0f);
-            var c = new Color(tint, tint, tint, 1f);
+            var c = new Color(tint, tint, tint, 0.25f);
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
             if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);

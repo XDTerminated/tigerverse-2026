@@ -157,7 +157,8 @@ namespace Tigerverse.UI
         private static void StripCollider(GameObject go)
         {
             var col = go.GetComponent<Collider>();
-            if (col != null) Destroy(col);
+            if (col == null) return;
+            if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
         }
 
         private static void ApplyMaterial(GameObject go, Material mat)

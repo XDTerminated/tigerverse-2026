@@ -70,7 +70,10 @@ namespace Tigerverse.UI
             dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             dome.name = "PaperSkyDome";
             var col = dome.GetComponent<Collider>();
-            if (col != null) Destroy(col);
+            if (col != null)
+            {
+                if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+            }
 
             dome.transform.SetParent(transform, false);
             dome.transform.localScale = new Vector3(-DomeRadius, -DomeRadius, -DomeRadius);
@@ -127,7 +130,8 @@ namespace Tigerverse.UI
 
         void OnDestroy()
         {
-            if (dome != null) Destroy(dome);
+            if (dome == null) return;
+            if (Application.isPlaying) Destroy(dome); else DestroyImmediate(dome);
         }
     }
 }
