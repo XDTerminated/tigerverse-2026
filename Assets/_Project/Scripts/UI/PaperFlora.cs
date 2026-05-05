@@ -49,7 +49,7 @@ namespace Tigerverse.UI
 
         private void Start()
         {
-            int n = Mathf.Clamp(count, 30, 60);
+            int n = Mathf.Clamp(count, 8, 30);
             var bin = new GameObject("Flora");
             bin.transform.SetParent(transform, worldPositionStays: false);
 
@@ -63,12 +63,12 @@ namespace Tigerverse.UI
                 }
                 Vector3 pos = transform.position + new Vector3(disc.x, 0f, disc.y);
                 float scale = Random.Range(0.8f, 1.2f);
-                int kind = Random.Range(0, 3);
+                float roll = Random.value;
 
                 GameObject piece;
-                if (kind == 0)      piece = BuildGrassTuft();
-                else if (kind == 1) piece = BuildFlower();
-                else                piece = BuildMushroom();
+                if (roll < 0.15f)      piece = BuildGrassTuft();
+                else if (roll < 0.60f) piece = BuildFlower();
+                else                   piece = BuildMushroom();
 
                 piece.transform.SetParent(bin.transform, worldPositionStays: false);
                 piece.transform.position = pos;
@@ -81,7 +81,7 @@ namespace Tigerverse.UI
         private GameObject BuildGrassTuft()
         {
             var root = new GameObject("GrassTuft");
-            int blades = Random.Range(3, 6);
+            int blades = Random.Range(1, 3);
             float baseY = 0f;
             Material mat = MakeUnlitTransparent(GrassGreen);
             for (int i = 0; i < blades; i++)

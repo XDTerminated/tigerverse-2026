@@ -34,7 +34,7 @@ namespace Tigerverse.Combat
                 // loop as the normal path below.
                 var nullPathMoves = new List<MoveSO>();
                 if (catalog != null && catalog.Dodge != null) nullPathMoves.Add(catalog.Dodge);
-                string[] nullFillers = { "Fireball", "Watergun", "Thunderbolt", "Iceshard", "Leafblade", "Rocksmash", "Shadowbite" };
+                string[] nullFillers = ElementFillers(so.element);
                 for (int i = 0; i < nullFillers.Length && nullPathMoves.Count < 4; i++)
                 {
                     var fb = catalog?.Find(nullFillers[i]);
@@ -90,7 +90,11 @@ namespace Tigerverse.Combat
 
             // Always guarantee 4 total moves so the wrist HUD has full pills and the
             // player can attack even if the backend's moveset is short or unmatched.
-            string[] fillers = { "Fireball", "Watergun", "Thunderbolt", "Iceshard", "Leafblade", "Rocksmash", "Shadowbite" };
+            // Element-themed: each element pulls from a curated list that mixes
+            // the canonical move with the new expansion moves (Vinewhip,
+            // Hydropump, Mindshatter, Stormcall, Quakebreaker) so every monster
+            // surfaces some variety from the full catalog.
+            string[] fillers = ElementFillers(so.element);
             for (int i = 0; i < fillers.Length && resolved.Count < 4; i++)
             {
                 var fb = catalog?.Find(fillers[i]);
@@ -106,6 +110,30 @@ namespace Tigerverse.Combat
 
             so.moves = resolved.ToArray();
             return so;
+        }
+
+        private static string[] ElementFillers(ElementType element)
+        {
+            switch (element)
+            {
+                case ElementType.Fire:
+                    return new[] { "Fireball", "Stormcall", "Quakebreaker", "Mindshatter", "Vinewhip" };
+                case ElementType.Water:
+                    return new[] { "Watergun", "Hydropump", "Iceshard", "Mindshatter", "Vinewhip" };
+                case ElementType.Electric:
+                    return new[] { "Thunderbolt", "Stormcall", "Mindshatter", "Iceshard", "Hydropump" };
+                case ElementType.Earth:
+                    return new[] { "Rocksmash", "Quakebreaker", "Vinewhip", "Mindshatter", "Stormcall" };
+                case ElementType.Grass:
+                    return new[] { "Leafblade", "Vinewhip", "Hydropump", "Quakebreaker", "Mindshatter" };
+                case ElementType.Ice:
+                    return new[] { "Iceshard", "Hydropump", "Stormcall", "Mindshatter", "Vinewhip" };
+                case ElementType.Dark:
+                    return new[] { "Shadowbite", "Mindshatter", "Stormcall", "Quakebreaker", "Vinewhip" };
+                case ElementType.Neutral:
+                default:
+                    return new[] { "Fireball", "Watergun", "Thunderbolt", "Iceshard", "Leafblade", "Rocksmash", "Shadowbite", "Mindshatter", "Stormcall" };
+            }
         }
     }
 }

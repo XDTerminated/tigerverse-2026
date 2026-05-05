@@ -21,28 +21,10 @@ namespace Tigerverse.UI
 
         void Start()
         {
-            _wind = CreateChild("Wind");
-            _wind.clip = SynthWind();
-            _wind.loop = true;
-            _wind.volume = 0.15f;
-            _wind.spatialBlend = 0f;
-            _wind.playOnAwake = false;
-            _wind.Play();
-
-            _rustle = CreateChild("Rustle");
-            _rustle.loop = false;
-            _rustle.volume = 0.20f;
-            _rustle.spatialBlend = 0f;
-            _rustle.playOnAwake = false;
-
-            _chime = CreateChild("Chime");
-            _chime.loop = false;
-            _chime.volume = 0.10f;
-            _chime.spatialBlend = 0f;
-            _chime.playOnAwake = false;
-
-            StartCoroutine(RustleLoop());
-            StartCoroutine(ChimeLoop());
+            // Ambience disabled: the synthesized wind read as a continuous
+            // steam/hiss in playtest. Kept the file + Spawn API to avoid
+            // breaking PaperSceneEnhancer references; revive by restoring
+            // the original Start body if you want the wind layer back.
         }
 
         AudioSource CreateChild(string name)

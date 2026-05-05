@@ -148,6 +148,28 @@ namespace Tigerverse.Net
         }
 
         /// <summary>
+        /// Generic per-move animation hook. BattleManager calls this with
+        /// MoveSO.animTrigger (e.g. "AttackFire", "AttackZap", "AttackHeal",
+        /// "Dodge", "Hit"). Safely no-ops if the active Animator controller
+        /// doesn't define a Trigger parameter with the given name, so this
+        /// is safe to call before the controllers are fully wired.
+        /// </summary>
+        public void PlayMoveAnim(string triggerName)
+        {
+            if (string.IsNullOrEmpty(triggerName)) return;
+            if (_animator == null || _animator.runtimeAnimatorController == null) return;
+            int hash = Animator.StringToHash(triggerName);
+            foreach (var p in _animator.parameters)
+            {
+                if (p.type == AnimatorControllerParameterType.Trigger && p.nameHash == hash)
+                {
+                    _animator.SetTrigger(hash);
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
         /// Forces the Walk bool on the Animator. Normally the LateUpdate
         /// velocity check sets this automatically; expose it for cases where
         /// movement should be implied from non-positional input (joystick,

@@ -22,12 +22,13 @@ namespace Tigerverse.UI
         [SerializeField] private bool spawnLighting  = true;
 
         [Header("Ground & flora")]
-        [SerializeField] private bool spawnFlora        = true;
-        [SerializeField] private bool spawnGroundDoodles= true;
-        [SerializeField] private float floraRadius      = 6f;
-        [SerializeField] private int   floraCount       = 40;
-        [SerializeField] private float doodleRadius     = 8f;
-        [SerializeField] private int   doodleCount      = 30;
+        [SerializeField] private bool spawnFlora           = true;
+        [SerializeField] private bool spawnGroundDoodles   = true;
+        [SerializeField] private bool spawnGroundExtension = true;
+        [SerializeField] private float floraRadius         = 7f;
+        [SerializeField] private int   floraCount          = 16;
+        [SerializeField] private float doodleRadius        = 8f;
+        [SerializeField] private int   doodleCount         = 30;
 
         [Header("Air layer")]
         [SerializeField] private bool spawnLeaves   = false;
@@ -68,6 +69,7 @@ namespace Tigerverse.UI
             if (spawnMountains)      Parent(PaperMountains.Spawn(c));
             if (spawnClouds)         Parent(PaperClouds.Spawn());
 
+            if (spawnGroundExtension) Parent(PaperGroundExtension.Spawn(c));
             if (spawnGroundDoodles)  Parent(PaperGroundDoodles.Spawn(c, doodleRadius, doodleCount));
             if (spawnFlora)          Parent(PaperFlora.Spawn(c, floraRadius, floraCount));
 

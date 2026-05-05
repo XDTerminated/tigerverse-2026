@@ -387,17 +387,25 @@ namespace Tigerverse.Combat
             // 1. Cry before attack.
             if (casterCry != null) casterCry.PlayBeforeAttack();
 
-            // Trigger the casting trainer's "Point" pose on every PaperHumanoid
-            // currently in the scene. The local player doesn't render their
-            // own PaperHumanoid (we see our controllers), so on each device
-            // the only humanoid present is the opponent's body — meaning
-            // calling on all of them effectively only fires for the visible
-            // remote avatar. The animation only plays if their Casual /
-            // MaleCasual.controller actually defines a "Point" trigger; the
-            // PaperHumanoid.PlayPoint helper safely no-ops otherwise.
+            // Drive the per-move animation on every visible PaperHumanoid using
+            // move.animTrigger (each MoveSO sets this to e.g. "AttackFire",
+            // "AttackZap", "Dodge"). The local player doesn't render their own
+            // humanoid — calling on all = effectively only the visible opponent.
+            // PlayMoveAnim safely no-ops if the controller lacks the named param.
+            string castTrigger = string.IsNullOrEmpty(move.animTrigger) ? "Point" : move.animTrigger;
             var humanoids = FindObjectsByType<Tigerverse.Net.PaperHumanoid>(FindObjectsSortMode.None);
             for (int i = 0; i < humanoids.Length; i++)
-                if (humanoids[i] != null) humanoids[i].PlayPoint();
+                if (humanoids[i] != null) humanoids[i].PlayMoveAnim(castTrigger);
+
+            // Polish FX layer at cast time: floating move-name banner above caster,
+            // inward-spiral charge particles at caster torso, and an element-tinted
+            // aura column parented to the caster pivot for the duration of the cast.
+            if (casterPivot != null)
+            {
+                VFX.MoveNameBanner.Show(move.displayName, move.element, casterPivot.position, 1.2f, this);
+                VFX.CastChargeVFX.Spawn(casterPivot.position, move.element, castDuration);
+                VFX.CasterAuraVFX.Spawn(casterPivot, move.element, castDuration, this);
+            }
 
             // 2. Cast SFX at caster. Falls back to a procedurally-synthesized
             // element-flavoured clip if the MoveSO doesn't have one wired —
@@ -436,9 +444,11 @@ namespace Tigerverse.Combat
                 yield break;
             }
 
-            // 4. Either play assigned vfxPrefab or spawn procedural orb.
+            // 4. Either play assigned vfxPrefab or spawn the new ElementOrb (richer
+            // stretched ellipsoid + halo + particle plume). Electric is special-cased
+            // to a forking lightning bolt instead of a tracked orb.
             GameObject vfxInstance = null;
-            ProceduralOrbState orb = null;
+            GameObject orbGO = null;
             float waitForArrival = castDuration;
 
             if (move.vfxPrefab != null && casterPivot != null)
@@ -448,18 +458,23 @@ namespace Tigerverse.Combat
             }
             else if (casterPivot != null && defenderPivot != null)
             {
-                orb = SpawnProceduralOrb(casterPivot.position, defenderPivot, move.element, castDuration * 0.6f);
-                waitForArrival = castDuration * 0.6f;
+                if (move.element == ElementType.Electric)
+                {
+                    VFX.LightningBoltVFX.Spawn(casterPivot.position, defenderPivot.position, move.element, 0.35f, this);
+                    waitForArrival = 0.30f;
+                }
+                else
+                {
+                    orbGO = VFX.ElementOrbVFX.Spawn(casterPivot.position, defenderPivot, move.element, castDuration * 0.6f, this);
+                    waitForArrival = castDuration * 0.6f;
+                }
             }
 
             // 5. Wait for cast/arrival.
             yield return new WaitForSeconds(waitForArrival);
 
-            // Clean up procedural orb on arrival.
-            if (orb != null && orb.gameObject != null)
-            {
-                Destroy(orb.gameObject);
-            }
+            // Clean up orb on arrival.
+            if (orbGO != null) Destroy(orbGO);
 
             // 6. Impact: SFX at defender. Same fallback logic as the cast SFX.
             if (defenderPivot != null)
@@ -479,9 +494,38 @@ namespace Tigerverse.Combat
             // 7. Procedural impact burst + defender hit-shake + scale-pulse.
             if (defenderPivot != null)
             {
-                SpawnImpactBurst(defenderPivot.position, move.element);
+                // Defender flinch: fire the "Hit" trigger on visible humanoids so
+                // the opponent visibly reacts when struck. Same broadcast pattern as
+                // the cast trigger above; PlayMoveAnim no-ops on missing params.
+                if (damageDealt > 0)
+                {
+                    var hitTargets = FindObjectsByType<Tigerverse.Net.PaperHumanoid>(FindObjectsSortMode.None);
+                    for (int i = 0; i < hitTargets.Length; i++)
+                    {
+                        if (hitTargets[i] == null) continue;
+                        hitTargets[i].PlayMoveAnim("Hit");
+                        VFX.HitFlashController.Flash(hitTargets[i].transform, move.element, 0.30f, this);
+                    }
+                }
+                VFX.ElementImpactBurst.Spawn(defenderPivot.position, move.element);
                 StartCoroutine(HitShakeCoroutine(defenderPivot, 0.06f, 0.28f));
                 StartCoroutine(ImpactPulseCoroutine(defenderPivot, 1.10f, 0.20f));
+
+                // Camera-shake amplitude + screen-flash intensity scale with damage.
+                // Cap so a 100-damage one-shot doesn't blow out the camera.
+                float dmgFactor = Mathf.Clamp01(damageDealt / 30f);
+                if (damageDealt > 0)
+                {
+                    VFX.BattleCameraShake.Shake(0.04f + 0.06f * dmgFactor, 0.20f + 0.15f * dmgFactor, this);
+                    VFX.ScreenFlashOverlay.Flash(move.element, 0.18f + 0.22f * dmgFactor, 0.35f, this);
+                }
+
+                // Big-hit only: ground shockwave ring at defender's feet.
+                if (damageDealt >= 20)
+                {
+                    Vector3 groundPos = new Vector3(defenderPivot.position.x, defenderPivot.position.y - 0.9f, defenderPivot.position.z);
+                    VFX.GroundShockwaveVFX.Spawn(groundPos, move.element, 0.55f, this);
+                }
 
                 // Damage popup floating text (skip on heal/status).
                 if (damageDealt > 0)
